@@ -1,8 +1,10 @@
-fn runtime_role_enabled(role: &str) -> bool {
+use super::*;
+
+pub(super) fn runtime_role_enabled(role: &str) -> bool {
     matches!(role, "planner" | "executor")
 }
 
-fn sanitize_phase_for_runtime(phase: Option<&str>) -> Option<String> {
+pub(super) fn sanitize_phase_for_runtime(phase: Option<&str>) -> Option<String> {
     let phase = phase?;
     if runtime_role_enabled(phase) {
         Some(phase.to_string())
@@ -20,7 +22,7 @@ fn sanitize_phase_for_runtime(phase: Option<&str>) -> Option<String> {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn write_json_if_missing_or_empty<T: Serialize>(
+pub(super) fn write_json_if_missing_or_empty<T: Serialize>(
     workspace: &Path,
     path: &Path,
     artifact: &str,
@@ -38,7 +40,7 @@ fn write_json_if_missing_or_empty<T: Serialize>(
     Ok(true)
 }
 
-fn touch_file_if_missing_or_empty(path: &Path) -> Result<bool> {
+pub(super) fn touch_file_if_missing_or_empty(path: &Path) -> Result<bool> {
     let existing = std::fs::read_to_string(path).unwrap_or_default();
     if path.exists() && !existing.trim().is_empty() {
         return Ok(false);
@@ -50,7 +52,7 @@ fn touch_file_if_missing_or_empty(path: &Path) -> Result<bool> {
     Ok(true)
 }
 
-fn push_created_path(created: &mut Vec<String>, tracked_path: &str, was_created: bool) {
+pub(super) fn push_created_path(created: &mut Vec<String>, tracked_path: &str, was_created: bool) {
     if was_created {
         created.push(tracked_path.to_string());
     }
@@ -65,7 +67,7 @@ fn push_created_path(created: &mut Vec<String>, tracked_path: &str, was_created:
 /// Invariants: created path is recorded only through push_created_path using migration result
 /// Failure: returns projection migration errors
 /// Provenance: rustc:facts + rustc:docstring
-fn migrate_projection_and_track(
+pub(super) fn migrate_projection_and_track(
     created: &mut Vec<String>,
     workspace: &Path,
     legacy_name: &str,
@@ -96,7 +98,7 @@ fn migrate_projection_and_track(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn write_json_baseline_and_track<T: serde::Serialize>(
+pub(super) fn write_json_baseline_and_track<T: serde::Serialize>(
     created: &mut Vec<String>,
     workspace: &Path,
     path: &Path,
@@ -121,7 +123,7 @@ fn write_json_baseline_and_track<T: serde::Serialize>(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn ensure_workspace_artifact_baseline(
+pub(super) fn ensure_workspace_artifact_baseline(
     workspace: &Path,
     planner_projection_path: &Path,
 ) -> Result<Vec<String>> {
@@ -222,13 +224,13 @@ fn ensure_workspace_artifact_baseline(
     Ok(created)
 }
 
-fn artifact_file_ready(path: &Path) -> bool {
+pub(super) fn artifact_file_ready(path: &Path) -> bool {
     std::fs::metadata(path)
         .map(|meta| meta.is_file() && meta.len() > 0)
         .unwrap_or(false)
 }
 
-fn ensure_lessons_baseline(workspace: &Path, created: &mut Vec<String>) -> Result<()> {
+pub(super) fn ensure_lessons_baseline(workspace: &Path, created: &mut Vec<String>) -> Result<()> {
     let lessons_path = workspace.join("agent_state/lessons.json");
     if artifact_file_ready(&lessons_path) {
         return Ok(());
@@ -242,7 +244,7 @@ fn ensure_lessons_baseline(workspace: &Path, created: &mut Vec<String>) -> Resul
     Ok(())
 }
 
-fn ensure_planner_projection_baseline(
+pub(super) fn ensure_planner_projection_baseline(
     workspace: &Path,
     planner_projection_path: &Path,
     created: &mut Vec<String>,
@@ -267,7 +269,7 @@ fn ensure_planner_projection_baseline(
 }
 
 /// Extract a string field from a JSON object, returning `""` on missing/non-string.
-fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
+pub(super) fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(|v| v.as_str()).unwrap_or("")
 }
 
@@ -280,17 +282,17 @@ fn jstr<'a>(v: &'a Value, key: &str) -> &'a str {
 /// Invariants: returns the argument immediately following the first matching flag pair
 /// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
-fn find_flag_arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+pub(super) fn find_flag_arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|w| w[0] == flag)
         .map(|w| w[1].as_str())
 }
 
-fn ws_port_is_available(port: u16) -> bool {
+pub(super) fn ws_port_is_available(port: u16) -> bool {
     std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).is_ok()
 }
 
-fn choose_ws_port(args: &[String]) -> Result<(u16, bool)> {
+pub(super) fn choose_ws_port(args: &[String]) -> Result<(u16, bool)> {
     if let Some(raw) = find_flag_arg(args, "--port") {
         let port = raw
             .parse::<u16>()
@@ -310,7 +312,7 @@ fn choose_ws_port(args: &[String]) -> Result<(u16, bool)> {
     );
 }
 
-fn role_key(role: &str) -> &str {
+pub(super) fn role_key(role: &str) -> &str {
     if role.starts_with("executor") {
         "executor"
     } else if role == "solo" {
@@ -320,7 +322,7 @@ fn role_key(role: &str) -> &str {
     }
 }
 
-fn response_timeout_for_role(role: &str) -> u64 {
+pub(super) fn response_timeout_for_role(role: &str) -> u64 {
     let role_key = role_key(role);
     let scoped_env = format!(
         "CANON_LLM_TIMEOUT_SECS_{}",
@@ -358,7 +360,7 @@ fn response_timeout_for_role(role: &str) -> u64 {
 /// Invariants: returns raw input for invalid JSON; otherwise emits only known cargo-test failure summary fields
 /// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
-fn summarize_cargo_test_failures(raw: &str) -> String {
+pub(super) fn summarize_cargo_test_failures(raw: &str) -> String {
     let Ok(value) = serde_json::from_str::<Value>(raw) else {
         return raw.to_string();
     };
@@ -389,7 +391,7 @@ fn summarize_cargo_test_failures(raw: &str) -> String {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn load_cargo_test_failures(workspace: &Path) -> String {
+pub(super) fn load_cargo_test_failures(workspace: &Path) -> String {
     let path = workspace.join("cargo_test_failures.json");
     let raw = std::fs::read_to_string(path).unwrap_or_default();
     summarize_cargo_test_failures(&raw)
@@ -404,7 +406,7 @@ fn load_cargo_test_failures(workspace: &Path) -> String {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn load_single_role_setup(
+pub(super) fn load_single_role_setup(
     ctx: &SingleRoleContext<'_>,
     endpoints: &[LlmEndpoint],
     is_verifier: bool,
@@ -416,7 +418,7 @@ fn load_single_role_setup(
     Ok((inputs, endpoint))
 }
 
-fn trace_message_forwarded(
+pub(super) fn trace_message_forwarded(
     role: &str,
     prompt_kind: &str,
     step: usize,
@@ -436,7 +438,7 @@ fn trace_message_forwarded(
     );
 }
 
-fn trace_message_received(
+pub(super) fn trace_message_received(
     role: &str,
     prompt_kind: &str,
     step: usize,
@@ -456,7 +458,7 @@ fn trace_message_received(
     );
 }
 
-fn trace_message_common(
+pub(super) fn trace_message_common(
     role: &str,
     prompt_kind: &str,
     step: usize,
@@ -483,7 +485,7 @@ fn trace_message_common(
     append_orchestration_trace(event_name, Value::Object(payload));
 }
 
-fn trace_orchestrator_forwarded(
+pub(super) fn trace_orchestrator_forwarded(
     from: &str,
     to: &str,
     phase: &str,
@@ -526,7 +528,7 @@ fn trace_orchestrator_forwarded(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn build_blocker_payload(
+pub(super) fn build_blocker_payload(
     summary: &str,
     blocker: &str,
     evidence: &str,
@@ -542,7 +544,7 @@ fn build_blocker_payload(
     })
 }
 
-fn file_modified_ms(path: &Path) -> Option<u128> {
+pub(super) fn file_modified_ms(path: &Path) -> Option<u128> {
     std::fs::metadata(path)
         .ok()?
         .modified()
@@ -553,15 +555,15 @@ fn file_modified_ms(path: &Path) -> Option<u128> {
 }
 
 #[derive(Serialize)]
-struct ControlConvergenceSnapshot<'a> {
-    state: &'a SystemState,
-    active_blocker: bool,
-    verifier_pending: bool,
-    verifier_running: bool,
+pub(super) struct ControlConvergenceSnapshot<'a> {
+    pub(super) state: &'a SystemState,
+    pub(super) active_blocker: bool,
+    pub(super) verifier_pending: bool,
+    pub(super) verifier_running: bool,
 }
 
 /// Hash the semantic control snapshot that actually governs routing.
-fn cycle_control_hash(snapshot: &ControlConvergenceSnapshot<'_>) -> u64 {
+pub(super) fn cycle_control_hash(snapshot: &ControlConvergenceSnapshot<'_>) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -581,7 +583,7 @@ fn cycle_control_hash(snapshot: &ControlConvergenceSnapshot<'_>) -> u64 {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn write_livelock_report(
+pub(super) fn write_livelock_report(
     agent_state_dir: &Path,
     stall_cycles: u32,
     control_surfaces: &[&str],
@@ -640,7 +642,7 @@ fn write_livelock_report(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn build_livelock_report(
+pub(super) fn build_livelock_report(
     stall_cycles: u32,
     control_surfaces: &[&str],
     planner_pending: bool,
@@ -660,7 +662,7 @@ fn build_livelock_report(
     })
 }
 
-fn livelock_pending_state(planner_pending: bool, diagnostics_pending: bool) -> Value {
+pub(super) fn livelock_pending_state(planner_pending: bool, diagnostics_pending: bool) -> Value {
     json!({
         "planner_pending": planner_pending,
         "diagnostics_pending": diagnostics_pending,
@@ -668,14 +670,14 @@ fn livelock_pending_state(planner_pending: bool, diagnostics_pending: bool) -> V
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PlannerActionResultClass {
+pub(super) enum PlannerActionResultClass {
     ReadyHandoff,
     BlockedHandoff,
     CompleteHandoff,
     StayPlanner,
 }
 
-fn classify_planner_summary_result(summary: &str) -> PlannerActionResultClass {
+pub(super) fn classify_planner_summary_result(summary: &str) -> PlannerActionResultClass {
     let text = summary.to_ascii_lowercase();
     if text.contains("ready task") && text.contains("dispatched") {
         PlannerActionResultClass::ReadyHandoff
@@ -684,7 +686,7 @@ fn classify_planner_summary_result(summary: &str) -> PlannerActionResultClass {
     }
 }
 
-fn classify_planner_message_result(action: &Value) -> PlannerActionResultClass {
+pub(super) fn classify_planner_message_result(action: &Value) -> PlannerActionResultClass {
     let status = action
         .get("status")
         .and_then(|v| v.as_str())
@@ -707,7 +709,7 @@ fn classify_planner_message_result(action: &Value) -> PlannerActionResultClass {
     PlannerActionResultClass::StayPlanner
 }
 
-fn classify_planner_action_result_class(completion: &AgentCompletion) -> PlannerActionResultClass {
+pub(super) fn classify_planner_action_result_class(completion: &AgentCompletion) -> PlannerActionResultClass {
     if let AgentCompletion::Summary(summary) = completion {
         return classify_planner_summary_result(summary);
     }
@@ -717,7 +719,7 @@ fn classify_planner_action_result_class(completion: &AgentCompletion) -> Planner
     classify_planner_message_result(action)
 }
 
-fn planner_completion_allows_executor_dispatch(completion: &AgentCompletion) -> bool {
+pub(super) fn planner_completion_allows_executor_dispatch(completion: &AgentCompletion) -> bool {
     !matches!(
         classify_planner_action_result_class(completion),
         PlannerActionResultClass::BlockedHandoff

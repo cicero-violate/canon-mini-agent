@@ -1,4 +1,6 @@
-async fn run_planner_phase(
+use super::*;
+
+pub(super) async fn run_planner_phase(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     planner_bootstrapped: &mut bool,
@@ -209,7 +211,7 @@ async fn run_planner_phase(
     }
 }
 
-fn requeue_lane_after_submit_recovery(
+pub(super) fn requeue_lane_after_submit_recovery(
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
     lane_id: usize,
@@ -227,7 +229,7 @@ fn requeue_lane_after_submit_recovery(
     });
 }
 
-fn register_submitted_executor_turn(
+pub(super) fn register_submitted_executor_turn(
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
     lane_id: usize,
@@ -250,21 +252,21 @@ fn register_submitted_executor_turn(
     rt.submitted_turns.insert((tab_id, turn_id), submitted_turn);
 }
 
-fn executor_submit_timeout_message(ctx: &OrchestratorContext<'_>, lane_id: usize, command_id: &str) -> String {
+pub(super) fn executor_submit_timeout_message(ctx: &OrchestratorContext<'_>, lane_id: usize, command_id: &str) -> String {
     format!(
         "pending submit timeout: lane={} command_id={}",
         ctx.lanes[lane_id].label, command_id
     )
 }
 
-fn executor_submit_timeout_trace(ctx: &OrchestratorContext<'_>, lane_id: usize, command_id: &str) -> Value {
+pub(super) fn executor_submit_timeout_trace(ctx: &OrchestratorContext<'_>, lane_id: usize, command_id: &str) -> Value {
     json!({
         "lane_name": ctx.lanes[lane_id].label,
         "command_id": command_id,
     })
 }
 
-fn executor_submit_timeout_details(ctx: &OrchestratorContext<'_>, lane_id: usize, command_id: &str) -> Value {
+pub(super) fn executor_submit_timeout_details(ctx: &OrchestratorContext<'_>, lane_id: usize, command_id: &str) -> Value {
     json!({
         "stage": "executor_submit_timeout",
         "lane": ctx.lanes[lane_id].label,
@@ -272,7 +274,7 @@ fn executor_submit_timeout_details(ctx: &OrchestratorContext<'_>, lane_id: usize
     })
 }
 
-fn log_timed_out_executor_submit(
+pub(super) fn log_timed_out_executor_submit(
     ctx: &OrchestratorContext<'_>,
     lane_id: usize,
     pending: PendingSubmitState,
@@ -310,7 +312,7 @@ fn log_timed_out_executor_submit(
     );
 }
 
-fn recover_timed_out_executor_submit_lane(
+pub(super) fn recover_timed_out_executor_submit_lane(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -331,7 +333,7 @@ fn recover_timed_out_executor_submit_lane(
     apply_lane_pending_if_changed(writer, lane_id, true);
 }
 
-fn sweep_timed_out_executor_submits(
+pub(super) fn sweep_timed_out_executor_submits(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -354,7 +356,7 @@ fn sweep_timed_out_executor_submits(
     }
 }
 
-fn timed_out_submitted_turns(
+pub(super) fn timed_out_submitted_turns(
     _writer: &CanonicalWriter,
     rt: &RuntimeState,
     now: u64,
@@ -369,7 +371,7 @@ fn timed_out_submitted_turns(
     timed_out
 }
 
-fn log_timed_out_submitted_turn(
+pub(super) fn log_timed_out_submitted_turn(
     ctx: &OrchestratorContext<'_>,
     lane_id: usize,
     tab_id: u32,
@@ -418,7 +420,7 @@ fn log_timed_out_submitted_turn(
     );
 }
 
-fn recover_timed_out_submitted_turn(
+pub(super) fn recover_timed_out_submitted_turn(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -442,7 +444,7 @@ fn recover_timed_out_submitted_turn(
     apply_lane_pending_if_changed(writer, lane_id, true);
 }
 
-fn sweep_timed_out_submitted_turns(
+pub(super) fn sweep_timed_out_submitted_turns(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -467,7 +469,7 @@ fn sweep_timed_out_submitted_turns(
 /// Invariants: actor_kind and error marker are inserted only when count >= threshold
 /// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
-fn apply_route_gate_signal(
+pub(super) fn apply_route_gate_signal(
     state: &mut std::collections::HashMap<String, String>,
     count: usize,
     threshold: usize,
@@ -481,7 +483,7 @@ fn apply_route_gate_signal(
     }
 }
 
-fn apply_executor_route_gate_signal(
+pub(super) fn apply_executor_route_gate_signal(
     state: &mut std::collections::HashMap<String, String>,
     blockers: &crate::blockers::BlockersFile,
     now_ms: u64,
@@ -501,7 +503,7 @@ fn apply_executor_route_gate_signal(
     apply_route_gate_signal(state, count, threshold, actor_kind, error_key, error_value);
 }
 
-fn apply_executor_route_gate_error_class_signals(
+pub(super) fn apply_executor_route_gate_error_class_signals(
     state: &mut std::collections::HashMap<String, String>,
     blockers: &crate::blockers::BlockersFile,
     now_ms: u64,
@@ -517,7 +519,7 @@ fn apply_executor_route_gate_error_class_signals(
     apply_executor_route_gate_signal(state, blockers, now_ms, "executor", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
 }
 
-fn apply_executor_route_gate_role_signals(
+pub(super) fn apply_executor_route_gate_role_signals(
     state: &mut std::collections::HashMap<String, String>,
     blockers: &crate::blockers::BlockersFile,
     now_ms: u64,
@@ -528,7 +530,7 @@ fn apply_executor_route_gate_role_signals(
     apply_executor_route_gate_signal(state, blockers, now_ms, "verifier", &crate::error_class::ErrorClass::VerificationFailed, 1, "error_class", "verification_failed");
 }
 
-fn executor_route_gate_state(
+pub(super) fn executor_route_gate_state(
     ready_count: &str,
     blockers: &crate::blockers::BlockersFile,
     now_ms: u64,
@@ -552,7 +554,7 @@ fn executor_route_gate_state(
     state
 }
 
-fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
+pub(super) fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str) -> bool {
     let ws = std::path::PathBuf::from(workspace());
     let blockers = crate::blockers::load_blockers(&ws);
     let now_ms = crate::logging::now_ms();
@@ -579,7 +581,7 @@ fn evaluate_executor_route_gates(writer: &mut CanonicalWriter, ready_count: &str
     true
 }
 
-fn apply_any_missing_target_route_signal(
+pub(super) fn apply_any_missing_target_route_signal(
     state: &mut std::collections::HashMap<String, String>,
     blockers: &crate::blockers::BlockersFile,
     now_ms: u64,
@@ -598,7 +600,7 @@ fn apply_any_missing_target_route_signal(
     }
 }
 
-fn evaluate_executor_missing_target_gate(
+pub(super) fn evaluate_executor_missing_target_gate(
     writer: &mut CanonicalWriter,
     ws: &std::path::Path,
     blockers: &crate::blockers::BlockersFile,
@@ -625,7 +627,7 @@ fn evaluate_executor_missing_target_gate(
     true
 }
 
-fn apply_orchestrator_livelock_signal(
+pub(super) fn apply_orchestrator_livelock_signal(
     state: &mut std::collections::HashMap<String, String>,
     blockers: &crate::blockers::BlockersFile,
     now_ms: u64,
@@ -652,7 +654,7 @@ fn apply_orchestrator_livelock_signal(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn route_gate_block_record(reason: &str) -> serde_json::Value {
+pub(super) fn route_gate_block_record(reason: &str) -> serde_json::Value {
     serde_json::json!({
         "kind": "invariant_gate",
         "phase": "route",
@@ -673,7 +675,7 @@ fn route_gate_block_record(reason: &str) -> serde_json::Value {
 /// Invariants: route_gate_blocks_dispatch_and_marks_planner_pending
 /// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
-fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, reason: &str) {
+pub(super) fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, reason: &str) {
     eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
     let blocker_message = route_gate_blocker_message(reason);
     if persist_planner_blocker_message(writer, &blocker_message) {

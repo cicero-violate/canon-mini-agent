@@ -1,3 +1,5 @@
+use super::*;
+
 /// Intent: pure_transform
 /// Resource: error
 /// Inputs: &serde_json::Value
@@ -7,7 +9,7 @@
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn parse_completed_turn(value: &Value) -> Option<(u32, u64, String, Option<String>)> {
+pub(super) fn parse_completed_turn(value: &Value) -> Option<(u32, u64, String, Option<String>)> {
     let tab_id = value.get("tab_id").and_then(|x| x.as_u64())? as u32;
     let turn_id = value.get("turn_id").and_then(|x| x.as_u64())?;
     let text = value.get("text").and_then(|x| x.as_str())?.to_string();
@@ -18,7 +20,7 @@ fn parse_completed_turn(value: &Value) -> Option<(u32, u64, String, Option<Strin
     Some((tab_id, turn_id, text, endpoint_id))
 }
 
-fn handle_executor_completion(
+pub(super) fn handle_executor_completion(
     mut submitted: SubmittedExecutorTurn,
     tab_id: u32,
     turn_id: u64,
@@ -82,7 +84,7 @@ fn handle_executor_completion(
     )
 }
 
-fn handle_executor_completion_tool_continuation(
+pub(super) fn handle_executor_completion_tool_continuation(
     writer: &mut CanonicalWriter,
     submitted: &SubmittedExecutorTurn,
     lane_cfg: &LaneConfig,
@@ -121,7 +123,7 @@ fn handle_executor_completion_tool_continuation(
     true
 }
 
-fn record_executor_completion_observation(
+pub(super) fn record_executor_completion_observation(
     submitted: &SubmittedExecutorTurn,
     lane_name: &str,
     turn_id: u64,
@@ -134,7 +136,7 @@ fn record_executor_completion_observation(
     }
 }
 
-fn trace_executor_completion_processed(lane_name: &str, turn_id: u64, tab_id: u32) {
+pub(super) fn trace_executor_completion_processed(lane_name: &str, turn_id: u64, tab_id: u32) {
     append_orchestration_trace(
         "llm_message_processed",
         json!({
@@ -145,7 +147,7 @@ fn trace_executor_completion_processed(lane_name: &str, turn_id: u64, tab_id: u3
     );
 }
 
-fn log_executor_completion_observation_error(
+pub(super) fn log_executor_completion_observation_error(
     submitted: &SubmittedExecutorTurn,
     lane_name: &str,
     turn_id: u64,
@@ -171,7 +173,7 @@ fn log_executor_completion_observation_error(
     );
 }
 
-fn log_startup_stage_error(stage_label: &str, err: &impl std::fmt::Display) {
+pub(super) fn log_startup_stage_error(stage_label: &str, err: &impl std::fmt::Display) {
     eprintln!("[canon-mini-agent] {stage_label} failed: {err:#}");
     log_error_event(
         "orchestrate",
@@ -182,7 +184,7 @@ fn log_startup_stage_error(stage_label: &str, err: &impl std::fmt::Display) {
     );
 }
 
-fn maybe_defer_executor_completion(
+pub(super) fn maybe_defer_executor_completion(
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
     submitted: &SubmittedExecutorTurn,
@@ -214,7 +216,7 @@ fn maybe_defer_executor_completion(
     true
 }
 
-fn maybe_rebind_executor_completion_tab(
+pub(super) fn maybe_rebind_executor_completion_tab(
     workspace: &Path,
     writer: &mut CanonicalWriter,
     submitted: &mut SubmittedExecutorTurn,
@@ -235,7 +237,7 @@ fn maybe_rebind_executor_completion_tab(
     );
 }
 
-fn record_executor_completion_tab_rebind(
+pub(super) fn record_executor_completion_tab_rebind(
     workspace: &Path,
     writer: &mut CanonicalWriter,
     submitted: &mut SubmittedExecutorTurn,
@@ -259,7 +261,7 @@ fn record_executor_completion_tab_rebind(
     submitted.tab_id = tab_id;
 }
 
-fn trace_executor_completion_tab_rebind(
+pub(super) fn trace_executor_completion_tab_rebind(
     lane_name: &str,
     turn_id: u64,
     expected_tab: u32,
@@ -276,7 +278,7 @@ fn trace_executor_completion_tab_rebind(
     );
 }
 
-fn record_executor_completion_tab_rebind_blocker(
+pub(super) fn record_executor_completion_tab_rebind_blocker(
     workspace: &Path,
     lane_name: &str,
     turn_id: u64,
@@ -296,7 +298,7 @@ fn record_executor_completion_tab_rebind_blocker(
     );
 }
 
-fn apply_executor_completion_tab_rebind(
+pub(super) fn apply_executor_completion_tab_rebind(
     writer: &mut CanonicalWriter,
     lane_id: usize,
     from_tab_id: u32,
@@ -309,7 +311,7 @@ fn apply_executor_completion_tab_rebind(
     });
 }
 
-fn spawn_executor_completion_continuation(
+pub(super) fn spawn_executor_completion_continuation(
     writer: &mut CanonicalWriter,
     submitted: &SubmittedExecutorTurn,
     lane_cfg: &LaneConfig,
@@ -348,7 +350,7 @@ fn spawn_executor_completion_continuation(
     });
 }
 
-fn handle_executor_completion_message_action(
+pub(super) fn handle_executor_completion_message_action(
     writer: &mut CanonicalWriter,
     submitted: &SubmittedExecutorTurn,
     lane_cfg: &LaneConfig,
@@ -390,7 +392,7 @@ fn handle_executor_completion_message_action(
     true
 }
 
-fn finalize_executor_message_completion(writer: &mut CanonicalWriter, lane_id: usize) {
+pub(super) fn finalize_executor_message_completion(writer: &mut CanonicalWriter, lane_id: usize) {
     writer.apply(ControlEvent::LanePromptInFlightSet {
         lane_id,
         in_flight: false,
@@ -407,7 +409,7 @@ fn finalize_executor_message_completion(writer: &mut CanonicalWriter, lane_id: u
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ExecutorActionResultClass {
+pub(super) enum ExecutorActionResultClass {
     ReadyHandoff,
     BlockedHandoff,
     CompleteHandoff,
@@ -416,14 +418,14 @@ enum ExecutorActionResultClass {
     ToolOk,
 }
 
-fn exec_result_has_cargo_check_failure(exec_result: &str) -> bool {
+pub(super) fn exec_result_has_cargo_check_failure(exec_result: &str) -> bool {
     let text = exec_result.to_ascii_lowercase();
     text.contains("cargo check failed")
         || text.contains("error: could not compile")
         || (text.contains("cargo check") && text.contains("error["))
 }
 
-fn classify_executor_action_result_class(
+pub(super) fn classify_executor_action_result_class(
     action: &Value,
     exec_result: &str,
 ) -> ExecutorActionResultClass {
@@ -460,7 +462,7 @@ fn classify_executor_action_result_class(
     }
 }
 
-fn classify_message_executor_action_result(
+pub(super) fn classify_message_executor_action_result(
     status: &str,
     exec_result: &str,
 ) -> ExecutorActionResultClass {
@@ -476,7 +478,7 @@ fn classify_message_executor_action_result(
     ExecutorActionResultClass::ToolOk
 }
 
-fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &str) -> Value {
+pub(super) fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &str) -> Value {
     let action_kind = action
         .get("action")
         .and_then(|v| v.as_str())
@@ -485,7 +487,7 @@ fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &str) -> Val
     executor_blocker_handoff_message(payload)
 }
 
-fn executor_blocker_handoff_message(payload: Value) -> Value {
+pub(super) fn executor_blocker_handoff_message(payload: Value) -> Value {
     json!({
         "action": "message",
         "from": "executor",
@@ -498,7 +500,7 @@ fn executor_blocker_handoff_message(payload: Value) -> Value {
     })
 }
 
-fn synthesize_executor_blocker_payload(action_kind: &str, exec_result: &str) -> Value {
+pub(super) fn synthesize_executor_blocker_payload(action_kind: &str, exec_result: &str) -> Value {
     json!({
         "summary": format!("Executor {} failed and needs planner repair", action_kind),
         "blocker": "Executor action result mapped to planning failure class",
@@ -507,7 +509,7 @@ fn synthesize_executor_blocker_payload(action_kind: &str, exec_result: &str) -> 
     })
 }
 
-fn apply_control_from_executor_action_result(
+pub(super) fn apply_control_from_executor_action_result(
     writer: &mut CanonicalWriter,
     lane_id: usize,
     action: &Value,
@@ -548,7 +550,7 @@ fn apply_control_from_executor_action_result(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Value) {
+pub(super) fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Value) {
     let to_role = action.get("to").and_then(|v| v.as_str()).unwrap_or("");
     let effective_to = normalize_executor_completion_target(to_role);
 
@@ -572,21 +574,21 @@ fn persist_executor_completion_message(writer: &mut CanonicalWriter, action: &Va
     persist_non_planner_inbound_message(writer, from_role, &to_key, &action_text);
 }
 
-fn canonical_objectives_text(workspace: &Path) -> String {
+pub(super) fn canonical_objectives_text(workspace: &Path) -> String {
     crate::objectives::load_canonical_objectives_json(workspace).unwrap_or_else(|| {
         let path = crate::objectives::resolve_objectives_path(workspace);
         read_text_or_empty(path)
     })
 }
 
-fn objective_status_normalized(objective: &crate::objectives::Objective) -> Option<String> {
+pub(super) fn objective_status_normalized(objective: &crate::objectives::Objective) -> Option<String> {
     if !objective.status.trim().is_empty() {
         return Some(objective.status.trim().to_ascii_lowercase());
     }
     crate::objectives::extract_status(&objective.description).map(|s| s.to_ascii_lowercase())
 }
 
-fn objective_requires_plan_work(objective: &crate::objectives::Objective) -> bool {
+pub(super) fn objective_requires_plan_work(objective: &crate::objectives::Objective) -> bool {
     let status = objective_status_normalized(objective);
     if let Some(status) = status.as_deref() {
         if matches!(status, "deferred" | "blocked") {
@@ -596,7 +598,7 @@ fn objective_requires_plan_work(objective: &crate::objectives::Objective) -> boo
     !crate::objectives::is_completed(objective)
 }
 
-fn has_actionable_objectives(objectives_text: &str) -> bool {
+pub(super) fn has_actionable_objectives(objectives_text: &str) -> bool {
     let Ok(file) = serde_json::from_str::<crate::objectives::ObjectivesFile>(objectives_text)
     else {
         return false;
@@ -604,49 +606,43 @@ fn has_actionable_objectives(objectives_text: &str) -> bool {
     file.objectives.iter().any(objective_requires_plan_work)
 }
 
-type ExecutorSubmitJoinOutput = (usize, PendingExecutorSubmit, Result<String>);
+pub(super) type ExecutorSubmitJoinOutput = (usize, PendingExecutorSubmit, Result<String>);
 
 #[derive(Debug, Clone, Copy, Default)]
-struct ExecutorActivitySnapshot {
-    runtime_busy: bool,
-    canonical_work: bool,
-    flagged_busy: bool,
-    inflight: bool,
-    lane_pending: bool,
-    in_progress: bool,
+pub(super) struct ExecutorActivitySnapshot {
+    pub(super) runtime_busy: bool,
+    pub(super) canonical_work: bool,
+    pub(super) flagged_busy: bool,
+    pub(super) inflight: bool,
+    pub(super) lane_pending: bool,
+    pub(super) in_progress: bool,
 }
 
-fn executor_activity_snapshot(
+pub(super) fn executor_activity_snapshot(
     state: &SystemState,
     rt: &RuntimeState,
     submit_joinset: &tokio::task::JoinSet<ExecutorSubmitJoinOutput>,
     continuation_joinset: &tokio::task::JoinSet<ContinuationJoinOutput>,
 ) -> ExecutorActivitySnapshot {
-    let lane_pending = state.lanes.values().any(|lane| lane.pending);
-    let lane_in_progress = state
-        .lanes
-        .values()
-        .any(|lane| lane.in_progress_by.is_some());
-    let lane_submit_flagged = state.lane_submit_in_flight.values().any(|&v| v);
-    let lane_prompt_flagged = state.lane_prompt_in_flight.values().any(|&v| v);
+    let lane_flags = executor_lane_activity_flags(state);
     let runtime_busy = !rt.submitted_turns.is_empty()
         || !rt.executor_submit_inflight.is_empty()
         || !submit_joinset.is_empty()
         || !continuation_joinset.is_empty();
     let canonical_work = state.scheduled_phase.as_deref() == Some("executor")
         || state.wake_signals_pending.contains_key("executor")
-        || lane_pending
-        || lane_in_progress
-        || lane_submit_flagged
-        || lane_prompt_flagged;
+        || lane_flags.pending
+        || lane_flags.in_progress
+        || lane_flags.submit_flagged
+        || lane_flags.prompt_flagged;
     let flagged_busy = state.phase == "executor"
-        && (lane_submit_flagged || lane_prompt_flagged || lane_in_progress);
+        && (lane_flags.submit_flagged || lane_flags.prompt_flagged || lane_flags.in_progress);
     let inflight = !rt.submitted_turns.is_empty()
         || !rt.executor_submit_inflight.is_empty()
-        || lane_submit_flagged;
-    let in_progress = lane_in_progress
-        || lane_submit_flagged
-        || lane_prompt_flagged
+        || lane_flags.submit_flagged;
+    let in_progress = lane_flags.in_progress
+        || lane_flags.submit_flagged
+        || lane_flags.prompt_flagged
         || runtime_busy;
 
     ExecutorActivitySnapshot {
@@ -654,12 +650,31 @@ fn executor_activity_snapshot(
         canonical_work,
         flagged_busy,
         inflight,
-        lane_pending,
+        lane_pending: lane_flags.pending,
         in_progress,
     }
 }
 
-fn executor_lane_active(writer: &CanonicalWriter) -> bool {
+struct ExecutorLaneActivityFlags {
+    pending: bool,
+    in_progress: bool,
+    submit_flagged: bool,
+    prompt_flagged: bool,
+}
+
+fn executor_lane_activity_flags(state: &SystemState) -> ExecutorLaneActivityFlags {
+    ExecutorLaneActivityFlags {
+        pending: state.lanes.values().any(|lane| lane.pending),
+        in_progress: state
+            .lanes
+            .values()
+            .any(|lane| lane.in_progress_by.is_some()),
+        submit_flagged: state.lane_submit_in_flight.values().any(|&v| v),
+        prompt_flagged: state.lane_prompt_in_flight.values().any(|&v| v),
+    }
+}
+
+pub(super) fn executor_lane_active(writer: &CanonicalWriter) -> bool {
     writer
         .state()
         .lanes
@@ -667,7 +682,7 @@ fn executor_lane_active(writer: &CanonicalWriter) -> bool {
         .any(|lane| lane.pending || lane.in_progress_by.is_some())
 }
 
-fn queue_objective_plan_gap_if_needed(
+pub(super) fn queue_objective_plan_gap_if_needed(
     writer: &mut CanonicalWriter,
     objectives_text: &str,
     plan_text: &str,
@@ -705,7 +720,7 @@ fn queue_objective_plan_gap_if_needed(
     true
 }
 
-fn recover_stale_executor_lanes_after_replay(
+pub(super) fn recover_stale_executor_lanes_after_replay(
     writer: &mut CanonicalWriter,
     rt: &RuntimeState,
     lanes: &[LaneConfig],
@@ -719,7 +734,7 @@ fn recover_stale_executor_lanes_after_replay(
     requeue_phantom_executor_lanes(writer, rt);
 }
 
-fn requeue_orphaned_in_progress_lanes(
+pub(super) fn requeue_orphaned_in_progress_lanes(
     writer: &mut CanonicalWriter,
     lanes: &[LaneConfig],
     workspace: &Path,
@@ -764,7 +779,7 @@ fn requeue_orphaned_in_progress_lanes(
     }
 }
 
-fn seed_planner_after_discarded_checkpoint(
+pub(super) fn seed_planner_after_discarded_checkpoint(
     writer: &mut CanonicalWriter,
     checkpoint_loaded: bool,
 ) {
@@ -778,7 +793,7 @@ fn seed_planner_after_discarded_checkpoint(
     }
 }
 
-fn clear_stale_lane_inflight_flags(writer: &mut CanonicalWriter, rt: &RuntimeState) {
+pub(super) fn clear_stale_lane_inflight_flags(writer: &mut CanonicalWriter, rt: &RuntimeState) {
     // Runtime/state reconciliation: after replay (especially when checkpoint resume is
     // discarded), canonical in-flight flags may survive without matching runtime objects.
     // Clear those stale flags so executor dispatch can progress instead of livelocking on
@@ -818,7 +833,7 @@ fn clear_stale_lane_inflight_flags(writer: &mut CanonicalWriter, rt: &RuntimeSta
     }
 }
 
-fn purge_unresumable_submitted_turns_after_replay(
+pub(super) fn purge_unresumable_submitted_turns_after_replay(
     writer: &mut CanonicalWriter,
     rt: &RuntimeState,
     checkpoint_loaded: bool,
@@ -860,7 +875,7 @@ fn purge_unresumable_submitted_turns_after_replay(
     }
 }
 
-fn requeue_in_progress_lane(
+pub(super) fn requeue_in_progress_lane(
     writer: &mut CanonicalWriter,
     lane_id: usize,
     clear_prompt_in_flight: bool,
@@ -886,7 +901,7 @@ fn requeue_in_progress_lane(
     });
 }
 
-fn requeue_phantom_executor_lanes(writer: &mut CanonicalWriter, rt: &RuntimeState) {
+pub(super) fn requeue_phantom_executor_lanes(writer: &mut CanonicalWriter, rt: &RuntimeState) {
     let lane_ids: Vec<usize> = writer.state().lanes.keys().copied().collect();
     for lane_id in lane_ids {
         let (pending, in_progress, prompt_in_flight, submit_in_flight, has_submitted_turn) = {
@@ -951,7 +966,7 @@ fn requeue_phantom_executor_lanes(writer: &mut CanonicalWriter, rt: &RuntimeStat
     }
 }
 
-fn should_reject_solo_self_complete(
+pub(super) fn should_reject_solo_self_complete(
     action: &Value,
     objectives_text: &str,
     plan_text: &str,
@@ -968,7 +983,7 @@ fn should_reject_solo_self_complete(
         && !crate::orchestrator_seam::plan_has_incomplete_tasks(plan_text)
 }
 
-fn action_retry_fingerprint(action: &Value) -> String {
+pub(super) fn action_retry_fingerprint(action: &Value) -> String {
     let mut action = action.clone();
     if let Some(obj) = action.as_object_mut() {
         for key in [
@@ -984,7 +999,7 @@ fn action_retry_fingerprint(action: &Value) -> String {
     serde_json::to_string(&action).unwrap_or_default()
 }
 
-fn semantic_action_fingerprint(action: &Value) -> String {
+pub(super) fn semantic_action_fingerprint(action: &Value) -> String {
     let mut action = action.clone();
     if let Some(obj) = action.as_object_mut() {
         for key in [
@@ -1007,7 +1022,7 @@ fn semantic_action_fingerprint(action: &Value) -> String {
 }
 
 #[cfg(test)]
-fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
+pub(super) fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
     if crate::orchestrator_seam::plan_has_incomplete_tasks(plan_text) {
         return false;
     }
@@ -1019,7 +1034,7 @@ fn verifier_confirmed_with_plan_text(reason: &str, plan_text: &str) -> bool {
     false
 }
 
-fn claim_next_lane(writer: &mut CanonicalWriter, lane: &LaneConfig) -> Option<(usize, String)> {
+pub(super) fn claim_next_lane(writer: &mut CanonicalWriter, lane: &LaneConfig) -> Option<(usize, String)> {
     let lane_id = lane.index;
     let (pending, in_progress, latest_result) = {
         let s = writer.state();
@@ -1045,7 +1060,7 @@ fn claim_next_lane(writer: &mut CanonicalWriter, lane: &LaneConfig) -> Option<(u
     None
 }
 
-fn claim_executor_submit(
+pub(super) fn claim_executor_submit(
     writer: &mut CanonicalWriter,
     lane: &LaneConfig,
 ) -> Option<PendingExecutorSubmit> {
@@ -1071,7 +1086,7 @@ fn claim_executor_submit(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-async fn submit_executor_turn(
+pub(super) async fn submit_executor_turn(
     job: &PendingExecutorSubmit,
     endpoint: &LlmEndpoint,
     bridge: &WsBridge,

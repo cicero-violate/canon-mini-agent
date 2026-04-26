@@ -1325,15 +1325,36 @@ fn global_complexity_entry_json_object(
     mir_blocks: Option<&serde_json::Value>,
     mir_stmts: Option<&serde_json::Value>,
 ) -> serde_json::Value {
-    json!({
-        "crate": crate_name,
-        "symbol": symbol,
-        "file": file,
-        "line": line,
-        "complexity_proxy": complexity_proxy,
-        "mir_blocks": mir_blocks,
-        "mir_stmts": mir_stmts,
-    })
+    let fields = global_complexity_entry_json_fields(
+        crate_name,
+        symbol,
+        file,
+        line,
+        complexity_proxy,
+        mir_blocks,
+        mir_stmts,
+    );
+    serde_json::Value::Object(fields)
+}
+
+fn global_complexity_entry_json_fields(
+    crate_name: &str,
+    symbol: Option<&serde_json::Value>,
+    file: Option<&serde_json::Value>,
+    line: Option<&serde_json::Value>,
+    complexity_proxy: Option<&serde_json::Value>,
+    mir_blocks: Option<&serde_json::Value>,
+    mir_stmts: Option<&serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    serde_json::Map::from_iter([
+        ("crate".to_string(), json!(crate_name)),
+        ("symbol".to_string(), json!(symbol)),
+        ("file".to_string(), json!(file)),
+        ("line".to_string(), json!(line)),
+        ("complexity_proxy".to_string(), json!(complexity_proxy)),
+        ("mir_blocks".to_string(), json!(mir_blocks)),
+        ("mir_stmts".to_string(), json!(mir_stmts)),
+    ])
 }
 
 struct GlobalComplexityEntryFields<'a> {

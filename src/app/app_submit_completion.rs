@@ -1,3 +1,5 @@
+use super::*;
+
 /// Intent: validation_gate
 /// Resource: PLAN.json
 /// Inputs: &prompt_inputs::OrchestratorContext<'_>, &mut canonical_writer::CanonicalWriter, &app::RuntimeState
@@ -7,7 +9,7 @@
 /// Invariants: plan_is_authoritative, side_effects_are_intentional
 /// Failure: fail_closed
 /// Provenance: rustc:facts + rustc:docstring
-fn preflight_executor_dispatch(
+pub(super) fn preflight_executor_dispatch(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &RuntimeState,
@@ -58,7 +60,7 @@ fn preflight_executor_dispatch(
     None
 }
 
-fn clear_stale_pending_executor_lanes_without_runtime(
+pub(super) fn clear_stale_pending_executor_lanes_without_runtime(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
 ) {
@@ -96,7 +98,7 @@ fn clear_stale_pending_executor_lanes_without_runtime(
 /// Invariants: dispatch_requires_ready_lane_or_planner_wake
 /// Failure: fail_closed
 /// Provenance: rustc:facts + rustc:docstring
-fn dispatch_executor_submits(
+pub(super) fn dispatch_executor_submits(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -110,7 +112,7 @@ fn dispatch_executor_submits(
     dispatch_ready_executor_lanes(ctx, writer, rt, now, submit_joinset)
 }
 
-fn executor_dispatch_gate_result(
+pub(super) fn executor_dispatch_gate_result(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -151,7 +153,7 @@ fn executor_dispatch_gate_result(
 /// Invariants: side_effects_are_intentional
 /// Failure: fail_closed
 /// Provenance: rustc:facts + rustc:docstring
-fn dispatch_ready_executor_lanes(
+pub(super) fn dispatch_ready_executor_lanes(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -185,7 +187,7 @@ fn dispatch_ready_executor_lanes(
     cycle_progress
 }
 
-fn queue_executor_lane_submit(
+pub(super) fn queue_executor_lane_submit(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -232,7 +234,7 @@ fn queue_executor_lane_submit(
     });
 }
 
-fn run_executor_phase(
+pub(super) fn run_executor_phase(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -279,7 +281,7 @@ fn run_executor_phase(
     cycle_progress
 }
 
-fn handle_executor_submit_join_result(
+pub(super) fn handle_executor_submit_join_result(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -320,7 +322,7 @@ fn handle_executor_submit_join_result(
     }
 }
 
-fn log_missing_submit_ack(job: &PendingExecutorSubmit, exec_result: &str) {
+pub(super) fn log_missing_submit_ack(job: &PendingExecutorSubmit, exec_result: &str) {
     eprintln!(
         "[orchestrate] {} missing submit_ack (preserving lane ownership): {exec_result}",
         job.executor_name
@@ -340,7 +342,7 @@ fn log_missing_submit_ack(job: &PendingExecutorSubmit, exec_result: &str) {
     );
 }
 
-fn handle_missing_submit_ack(
+pub(super) fn handle_missing_submit_ack(
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
     job: &PendingExecutorSubmit,
@@ -364,7 +366,7 @@ fn handle_missing_submit_ack(
     false
 }
 
-fn log_late_submit_ack(ctx: &OrchestratorContext<'_>, lane_id: usize, tab_id: u32, turn_id: u64) {
+pub(super) fn log_late_submit_ack(ctx: &OrchestratorContext<'_>, lane_id: usize, tab_id: u32, turn_id: u64) {
     let lane_label = &ctx.lanes[lane_id].label;
     log_submit_ack_event(
         format!(
@@ -382,7 +384,7 @@ fn log_late_submit_ack(ctx: &OrchestratorContext<'_>, lane_id: usize, tab_id: u3
     );
 }
 
-fn register_late_submit_ack(
+pub(super) fn register_late_submit_ack(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -418,7 +420,7 @@ fn register_late_submit_ack(
     true
 }
 
-fn log_late_submit_ack_command_mismatch(
+pub(super) fn log_late_submit_ack_command_mismatch(
     ctx: &OrchestratorContext<'_>,
     lane_id: usize,
     expected_command_id: &str,
@@ -449,7 +451,7 @@ fn log_late_submit_ack_command_mismatch(
     );
 }
 
-fn take_matching_timed_out_submit(
+pub(super) fn take_matching_timed_out_submit(
     ctx: &OrchestratorContext<'_>,
     rt: &mut RuntimeState,
     lane_id: usize,
@@ -465,7 +467,7 @@ fn take_matching_timed_out_submit(
     None
 }
 
-fn log_submit_ack_tab_mismatch(
+pub(super) fn log_submit_ack_tab_mismatch(
     ctx: &OrchestratorContext<'_>,
     lane_id: usize,
     active_tab: u32,
@@ -486,12 +488,12 @@ fn log_submit_ack_tab_mismatch(
     );
 }
 
-fn log_submit_ack_event(message: String, payload: serde_json::Value) {
+pub(super) fn log_submit_ack_event(message: String, payload: serde_json::Value) {
     eprintln!("[orchestrate] {message}");
     log_error_event("executor", "orchestrate", None, &message, Some(payload));
 }
 
-fn submitted_executor_steps_used(writer: &CanonicalWriter, lane_id: usize) -> usize {
+pub(super) fn submitted_executor_steps_used(writer: &CanonicalWriter, lane_id: usize) -> usize {
     writer.state().lane_steps_used_count(lane_id)
 }
 
@@ -504,7 +506,7 @@ fn submitted_executor_steps_used(writer: &CanonicalWriter, lane_id: usize) -> us
 /// Invariants: deterministic_for_same_inputs
 /// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
-fn build_submitted_executor_turn(
+pub(super) fn build_submitted_executor_turn(
     writer: &CanonicalWriter,
     job: &PendingExecutorSubmit,
     pending: &PendingSubmitState,
@@ -533,7 +535,7 @@ fn build_submitted_executor_turn(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn submit_ack_matches_active_tab(
+pub(super) fn submit_ack_matches_active_tab(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     lane_id: usize,
@@ -555,7 +557,7 @@ fn submit_ack_matches_active_tab(
     true
 }
 
-fn handle_executor_submit_ack_result(
+pub(super) fn handle_executor_submit_ack_result(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -601,7 +603,7 @@ fn handle_executor_submit_ack_result(
     true
 }
 
-async fn process_completed_turns(
+pub(super) async fn process_completed_turns(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -623,7 +625,7 @@ async fn process_completed_turns(
     cycle_progress
 }
 
-fn process_completed_turn_item(
+pub(super) fn process_completed_turn_item(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -666,7 +668,7 @@ fn process_completed_turn_item(
     )
 }
 
-fn resolve_completed_turn_submission(
+pub(super) fn resolve_completed_turn_submission(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -704,7 +706,7 @@ fn resolve_completed_turn_submission(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn validate_registered_submitted_turn(
+pub(super) fn validate_registered_submitted_turn(
     writer: &mut CanonicalWriter,
     tab_id: u32,
     turn_id: u64,
@@ -729,7 +731,7 @@ fn validate_registered_submitted_turn(
     Some(submitted)
 }
 
-fn recover_completed_turn_submission(
+pub(super) fn recover_completed_turn_submission(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -785,7 +787,7 @@ fn recover_completed_turn_submission(
     ))
 }
 
-fn trace_unmatched_executor_completion(tab_id: u32, turn_id: u64, exec_result: &str) {
+pub(super) fn trace_unmatched_executor_completion(tab_id: u32, turn_id: u64, exec_result: &str) {
     append_orchestration_trace(
         "executor_completion_unmatched",
         json!({
@@ -805,7 +807,7 @@ fn trace_unmatched_executor_completion(tab_id: u32, turn_id: u64, exec_result: &
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn build_recovered_submitted_turn(
+pub(super) fn build_recovered_submitted_turn(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     tab_id: u32,
@@ -835,7 +837,7 @@ fn build_recovered_submitted_turn(
     }
 }
 
-fn drain_continuations(
+pub(super) fn drain_continuations(
     writer: &mut CanonicalWriter,
     continuation_joinset: &mut tokio::task::JoinSet<ContinuationJoinOutput>,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
@@ -851,7 +853,7 @@ fn drain_continuations(
     cycle_progress
 }
 
-fn handle_joined_continuation(
+pub(super) fn handle_joined_continuation(
     writer: &mut CanonicalWriter,
     verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
     joined: std::result::Result<ContinuationJoinOutput, tokio::task::JoinError>,
@@ -874,7 +876,7 @@ fn handle_joined_continuation(
     }
 }
 
-fn record_continuation_effects(
+pub(super) fn record_continuation_effects(
     writer: &mut CanonicalWriter,
     effect_rx: &mut UnboundedReceiver<EffectEvent>,
 ) {
@@ -883,7 +885,7 @@ fn record_continuation_effects(
     }
 }
 
-fn log_continuation_join_error(err: &tokio::task::JoinError) {
+pub(super) fn log_continuation_join_error(err: &tokio::task::JoinError) {
     eprintln!("[orchestrate] continuation join error: {err:#}");
     log_error_event(
         "orchestrate",
@@ -894,7 +896,7 @@ fn log_continuation_join_error(err: &tokio::task::JoinError) {
     );
 }
 
-fn handle_completed_continuation(
+pub(super) fn handle_completed_continuation(
     writer: &mut CanonicalWriter,
     _verifier_pending_results: &mut VecDeque<(SubmittedExecutorTurn, u64, String)>,
     submitted: SubmittedExecutorTurn,
@@ -935,7 +937,7 @@ fn handle_completed_continuation(
     true
 }
 
-fn finalize_executor_summary_without_verifier(
+pub(super) fn finalize_executor_summary_without_verifier(
     writer: &mut CanonicalWriter,
     submitted: &SubmittedExecutorTurn,
     turn_id: u64,
@@ -968,7 +970,7 @@ fn finalize_executor_summary_without_verifier(
     apply_control_from_executor_action_result(writer, submitted.lane, &action, final_exec_result);
 }
 
-fn recover_failed_continuation(
+pub(super) fn recover_failed_continuation(
     writer: &mut CanonicalWriter,
     submitted: &SubmittedExecutorTurn,
     err_text: &str,
@@ -1002,7 +1004,7 @@ fn recover_failed_continuation(
     });
 }
 
-fn drain_deferred_completions(
+pub(super) fn drain_deferred_completions(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -1026,7 +1028,7 @@ fn drain_deferred_completions(
     cycle_progress
 }
 
-fn drain_lane_deferred_completions(
+pub(super) fn drain_lane_deferred_completions(
     ctx: &OrchestratorContext<'_>,
     writer: &mut CanonicalWriter,
     rt: &mut RuntimeState,
@@ -1062,7 +1064,7 @@ fn drain_lane_deferred_completions(
     cycle_progress
 }
 
-fn canonical_role_label(role: &str) -> &'static str {
+pub(super) fn canonical_role_label(role: &str) -> &'static str {
     if role.starts_with("executor") {
         "executor"
     } else if role == "solo" {
@@ -1078,7 +1080,7 @@ fn canonical_role_label(role: &str) -> &'static str {
     }
 }
 
-fn blocker_target_role(role: &str) -> &'static str {
+pub(super) fn blocker_target_role(role: &str) -> &'static str {
     if role == "planner" || role == "mini_planner" {
         "executor"
     } else {
@@ -1086,7 +1088,7 @@ fn blocker_target_role(role: &str) -> &'static str {
     }
 }
 
-fn blocker_escalation_prompt(role: &str, last_error: &str, task_context: &str) -> String {
+pub(super) fn blocker_escalation_prompt(role: &str, last_error: &str, task_context: &str) -> String {
     let from = canonical_role_label(role);
     let to = blocker_target_role(role);
     format!(

@@ -1,4 +1,6 @@
-fn apply_diagnostics_pending_if_changed(writer: &mut CanonicalWriter, pending: bool) -> bool {
+use super::*;
+
+pub(super) fn apply_diagnostics_pending_if_changed(writer: &mut CanonicalWriter, pending: bool) -> bool {
     if writer.state().diagnostics_pending == pending {
         return false;
     }
@@ -6,7 +8,7 @@ fn apply_diagnostics_pending_if_changed(writer: &mut CanonicalWriter, pending: b
     true
 }
 
-fn apply_lane_pending_if_changed(
+pub(super) fn apply_lane_pending_if_changed(
     writer: &mut CanonicalWriter,
     lane_id: usize,
     pending: bool,
@@ -24,7 +26,7 @@ fn apply_lane_pending_if_changed(
     true
 }
 
-fn apply_wake_signals(writer: &mut CanonicalWriter) {
+pub(super) fn apply_wake_signals(writer: &mut CanonicalWriter) {
     let state_snapshot = writer.state().clone();
     let (inputs, signature_map) = collect_wake_signal_inputs(&state_snapshot);
     let wake_inputs_debug = inputs
@@ -121,7 +123,7 @@ fn apply_wake_signals(writer: &mut CanonicalWriter) {
     }
 }
 
-fn lane_has_stale_executor_claim(state: &SystemState, lane_id: usize) -> bool {
+pub(super) fn lane_has_stale_executor_claim(state: &SystemState, lane_id: usize) -> bool {
     let Some(lane) = state.lanes.get(&lane_id) else {
         return false;
     };
@@ -134,7 +136,7 @@ fn lane_has_stale_executor_claim(state: &SystemState, lane_id: usize) -> bool {
     true
 }
 
-fn recover_stale_executor_lane_claim(writer: &mut CanonicalWriter, lane_id: usize) {
+pub(super) fn recover_stale_executor_lane_claim(writer: &mut CanonicalWriter, lane_id: usize) {
     eprintln!(
         "[orchestrate] wake_signal_recovered_stale_lane: role=executor lane={} reason=stale_in_progress_without_live_work",
         lane_id
@@ -162,7 +164,7 @@ fn recover_stale_executor_lane_claim(writer: &mut CanonicalWriter, lane_id: usiz
     apply_lane_pending_if_changed(writer, lane_id, true);
 }
 
-fn should_suppress_repeated_executor_deferred_log(modified_ms: u64) -> bool {
+pub(super) fn should_suppress_repeated_executor_deferred_log(modified_ms: u64) -> bool {
     let map = repeated_executor_deferred_log_memory();
     let mut guard = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let last = guard.get("executor").copied();
@@ -170,7 +172,7 @@ fn should_suppress_repeated_executor_deferred_log(modified_ms: u64) -> bool {
     last == Some(modified_ms)
 }
 
-fn clear_repeated_executor_deferred_log_memory(role: &str) {
+pub(super) fn clear_repeated_executor_deferred_log_memory(role: &str) {
     if role != "executor" {
         return;
     }
@@ -179,7 +181,7 @@ fn clear_repeated_executor_deferred_log_memory(role: &str) {
     guard.remove("executor");
 }
 
-fn repeated_executor_deferred_log_memory(
+pub(super) fn repeated_executor_deferred_log_memory(
 ) -> &'static std::sync::Mutex<std::collections::HashMap<String, u64>> {
     static LAST_DEFERRED_BY_ROLE: std::sync::OnceLock<
         std::sync::Mutex<std::collections::HashMap<String, u64>>,
@@ -187,7 +189,7 @@ fn repeated_executor_deferred_log_memory(
     LAST_DEFERRED_BY_ROLE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
-fn collect_wake_signal_inputs(
+pub(super) fn collect_wake_signal_inputs(
     state: &SystemState,
 ) -> (
     Vec<WakeSignalInput>,
@@ -217,7 +219,7 @@ fn collect_wake_signal_inputs(
     (inputs, signature_map)
 }
 
-fn record_canonical_inbound_message(
+pub(super) fn record_canonical_inbound_message(
     workspace: &Path,
     from_role: &str,
     to_role: &str,
@@ -251,7 +253,7 @@ fn record_canonical_inbound_message(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn normalize_executor_completion_target<'a>(to_role: &'a str) -> &'a str {
+pub(super) fn normalize_executor_completion_target<'a>(to_role: &'a str) -> &'a str {
     if to_role.eq_ignore_ascii_case("executor") {
         eprintln!(
             "[orchestrate] executor→executor message detected; redirecting to planner \
@@ -278,7 +280,7 @@ fn normalize_executor_completion_target<'a>(to_role: &'a str) -> &'a str {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn persist_non_planner_inbound_message(
+pub(super) fn persist_non_planner_inbound_message(
     writer: &mut CanonicalWriter,
     from_role: &str,
     to_key: &str,
@@ -333,7 +335,7 @@ fn persist_non_planner_inbound_message(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn persist_planner_message(writer: &mut CanonicalWriter, action: &Value) {
+pub(super) fn persist_planner_message(writer: &mut CanonicalWriter, action: &Value) {
     let workspace = Path::new(crate::constants::workspace());
     let agent_state_dir = std::path::Path::new(crate::constants::agent_state_dir());
     let action_text = serde_json::to_string_pretty(action).unwrap_or_default();
@@ -386,7 +388,7 @@ fn persist_planner_message(writer: &mut CanonicalWriter, action: &Value) {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn persist_planner_blocker_message(writer: &mut CanonicalWriter, action: &Value) -> bool {
+pub(super) fn persist_planner_blocker_message(writer: &mut CanonicalWriter, action: &Value) -> bool {
     let evidence = action
         .get("payload")
         .and_then(|payload| payload.get("evidence"))
@@ -409,7 +411,7 @@ fn persist_planner_blocker_message(writer: &mut CanonicalWriter, action: &Value)
     true
 }
 
-fn invariant_id_from_reason(reason: &str) -> Option<&str> {
+pub(super) fn invariant_id_from_reason(reason: &str) -> Option<&str> {
     let start = reason.find("[id=")? + 4;
     let end = reason[start..].find(']')? + start;
     let id = reason[start..end].trim();
@@ -429,7 +431,7 @@ fn invariant_id_from_reason(reason: &str) -> Option<&str> {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn route_gate_blocker_message(reason: &str) -> Value {
+pub(super) fn route_gate_blocker_message(reason: &str) -> Value {
     let summary = match invariant_id_from_reason(reason) {
         Some(id) => format!("Executor dispatch blocked by enforced invariant {id}"),
         None => "Executor dispatch blocked by enforced route invariant".to_string(),
@@ -472,16 +474,16 @@ fn route_gate_blocker_message(reason: &str) -> Value {
     })
 }
 
-struct LlmResponseContext<'a> {
-    role: &'a str,
-    endpoint: &'a LlmEndpoint,
-    prompt_kind: &'a str,
-    submit_only: bool,
-    writer: Option<&'a mut CanonicalWriter>,
-    effect_tx: Option<UnboundedSender<EffectEvent>>,
+pub(super) struct LlmResponseContext<'a> {
+    pub(super) role: &'a str,
+    pub(super) endpoint: &'a LlmEndpoint,
+    pub(super) prompt_kind: &'a str,
+    pub(super) submit_only: bool,
+    pub(super) writer: Option<&'a mut CanonicalWriter>,
+    pub(super) effect_tx: Option<UnboundedSender<EffectEvent>>,
 }
 
-fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf {
+pub(super) fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir())
         .join("llm_full")
         .join(format!("{ts_ms:013}_{kind}_{who}_message_{step:04}.txt"))
@@ -496,7 +498,7 @@ fn full_exchange_path(kind: &str, ts_ms: u64, who: &str, step: usize) -> PathBuf
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn write_full_exchange(kind: &str, ts_ms: u64, who: &str, step: usize, raw: &str) {
+pub(super) fn write_full_exchange(kind: &str, ts_ms: u64, who: &str, step: usize, raw: &str) {
     let path = full_exchange_path(kind, ts_ms, who, step);
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -505,7 +507,7 @@ fn write_full_exchange(kind: &str, ts_ms: u64, who: &str, step: usize, raw: &str
 }
 
 impl<'a> LlmResponseContext<'a> {
-    fn record_effect(&mut self, effect: EffectEvent) {
+    pub(super) fn record_effect(&mut self, effect: EffectEvent) {
         if let Some(writer) = self.writer.as_deref_mut() {
             writer.record_effect(effect);
             return;
@@ -515,7 +517,7 @@ impl<'a> LlmResponseContext<'a> {
         }
     }
 
-    fn request_log_who(role: &str, has_role_schema: bool) -> &str {
+    pub(super) fn request_log_who(role: &str, has_role_schema: bool) -> &str {
         if has_role_schema {
             "system"
         } else {
@@ -523,7 +525,7 @@ impl<'a> LlmResponseContext<'a> {
         }
     }
 
-    fn request_raw_prompt(prompt: &str, trimmed_role_schema: &str, has_role_schema: bool) -> String {
+    pub(super) fn request_raw_prompt(prompt: &str, trimmed_role_schema: &str, has_role_schema: bool) -> String {
         if has_role_schema {
             format!("{}\n\n{}", trimmed_role_schema, prompt)
         } else {
@@ -531,7 +533,7 @@ impl<'a> LlmResponseContext<'a> {
         }
     }
 
-    fn log_request_message_event(
+    pub(super) fn log_request_message_event(
         &self,
         step: usize,
         exchange_id: &str,
@@ -554,7 +556,7 @@ impl<'a> LlmResponseContext<'a> {
         );
     }
 
-    fn record_request_input_effect(
+    pub(super) fn record_request_input_effect(
         &mut self,
         step: usize,
         exchange_id: &str,
@@ -600,7 +602,7 @@ impl<'a> LlmResponseContext<'a> {
     /// Invariants: canonical_effect_precedes_snapshot, request_metadata_preserved
     /// Failure: infallible
     /// Provenance: rustc:facts + rustc:docstring
-    fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
+    pub(super) fn log_request(&mut self, step: usize, exchange_id: &str, prompt: &str, role_schema: &str) {
         let ts_ms = crate::logging::now_ms();
         let trimmed_role_schema = role_schema.trim_end();
         let has_role_schema = !trimmed_role_schema.trim().is_empty();
@@ -620,7 +622,7 @@ impl<'a> LlmResponseContext<'a> {
         );
     }
 
-    fn response_action_kind(raw: &str) -> Option<String> {
+    pub(super) fn response_action_kind(raw: &str) -> Option<String> {
         let json_body = raw
             .trim()
             .trim_start_matches("```json")
@@ -632,7 +634,7 @@ impl<'a> LlmResponseContext<'a> {
             .and_then(|v| v.get("action").and_then(|a| a.as_str()).map(str::to_string))
     }
 
-    fn log_response_message_event(&self, step: usize, exchange_id: &str, raw: &str) {
+    pub(super) fn log_response_message_event(&self, step: usize, exchange_id: &str, raw: &str) {
         log_message_event(
             self.role,
             self.endpoint,
@@ -648,7 +650,7 @@ impl<'a> LlmResponseContext<'a> {
         );
     }
 
-    fn log_response(
+    pub(super) fn log_response(
         &mut self,
         step: usize,
         exchange_id: &str,
@@ -683,7 +685,7 @@ impl<'a> LlmResponseContext<'a> {
         write_full_exchange("received", ts_ms, self.role, step, raw);
     }
 
-    fn handle_submit_ack(&self, step: usize, exchange_id: &str, raw: &str) -> Option<String> {
+    pub(super) fn handle_submit_ack(&self, step: usize, exchange_id: &str, raw: &str) -> Option<String> {
         if !self.submit_only {
             return None;
         }
@@ -716,7 +718,7 @@ impl<'a> LlmResponseContext<'a> {
         None
     }
 
-    fn log_error(&self, step: usize, exchange_id: &str, error: &str) {
+    pub(super) fn log_error(&self, step: usize, exchange_id: &str, error: &str) {
         log_message_event(
             self.role,
             self.endpoint,
@@ -730,7 +732,7 @@ impl<'a> LlmResponseContext<'a> {
         );
     }
 
-    fn handle_reaction_only(
+    pub(super) fn handle_reaction_only(
         &self,
         step: usize,
         exchange_id: &str,
@@ -766,7 +768,7 @@ impl<'a> LlmResponseContext<'a> {
     }
 }
 
-async fn continue_executor_completion(
+pub(super) async fn continue_executor_completion(
     submitted: &SubmittedExecutorTurn,
     active_tab_id: u32,
     completion_text: &str,
@@ -929,7 +931,7 @@ async fn continue_executor_completion(
     .await
 }
 
-fn record_continuation_action_result_effect(
+pub(super) fn record_continuation_action_result_effect(
     effect_tx: Option<&UnboundedSender<EffectEvent>>,
     role: &str,
     step: usize,

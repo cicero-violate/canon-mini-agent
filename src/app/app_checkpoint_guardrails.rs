@@ -1,22 +1,24 @@
-fn is_chromium_transport_error(err_text: &str) -> bool {
+use super::*;
+
+pub(super) fn is_chromium_transport_error(err_text: &str) -> bool {
     err_text.contains("chromium: early transport failure")
         || err_text.contains("chromium: timeout waiting for SUBMIT_ACK")
         || err_text.contains("chromium: timeout waiting for response")
 }
 
 #[derive(Clone)]
-struct ShutdownSignal {
-    flag: Arc<AtomicBool>,
-    notify: Arc<Notify>,
+pub(super) struct ShutdownSignal {
+    pub(super) flag: Arc<AtomicBool>,
+    pub(super) notify: Arc<Notify>,
 }
 
-static SHUTDOWN_SIGNAL: OnceLock<ShutdownSignal> = OnceLock::new();
+pub(super) static SHUTDOWN_SIGNAL: OnceLock<ShutdownSignal> = OnceLock::new();
 
-fn shutdown_signal_cell() -> &'static OnceLock<ShutdownSignal> {
+pub(super) fn shutdown_signal_cell() -> &'static OnceLock<ShutdownSignal> {
     &SHUTDOWN_SIGNAL
 }
 
-fn init_shutdown_signal() -> ShutdownSignal {
+pub(super) fn init_shutdown_signal() -> ShutdownSignal {
     shutdown_signal_cell()
         .get_or_init(|| ShutdownSignal {
             flag: Arc::new(AtomicBool::new(false)),
@@ -25,77 +27,77 @@ fn init_shutdown_signal() -> ShutdownSignal {
         .clone()
 }
 
-fn shutdown_signal() -> Option<ShutdownSignal> {
+pub(super) fn shutdown_signal() -> Option<ShutdownSignal> {
     shutdown_signal_cell().get().cloned()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct CheckpointLane {
-    lane_id: usize,
-    lane_label: String,
-    plan_text: String,
-    pending: bool,
-    in_progress_by: Option<String>,
-    latest_verifier_result: String,
+pub(super) struct CheckpointLane {
+    pub(super) lane_id: usize,
+    pub(super) lane_label: String,
+    pub(super) plan_text: String,
+    pub(super) pending: bool,
+    pub(super) in_progress_by: Option<String>,
+    pub(super) latest_verifier_result: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct ResumeVerifierItem {
-    lane_id: usize,
-    lane_label: String,
-    lane_plan_file: String,
-    final_exec_result: String,
+pub(super) struct ResumeVerifierItem {
+    pub(super) lane_id: usize,
+    pub(super) lane_label: String,
+    pub(super) lane_plan_file: String,
+    pub(super) final_exec_result: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct OrchestratorCheckpoint {
+pub(super) struct OrchestratorCheckpoint {
     #[serde(default)]
-    workspace: String,
+    pub(super) workspace: String,
     #[serde(default)]
-    checkpoint_tlog_seq: u64,
-    created_ms: u64,
-    phase: String,
-    phase_lane: Option<usize>,
-    planner_pending: bool,
-    diagnostics_pending: bool,
-    diagnostics_text: String,
-    last_plan_text: String,
-    last_executor_diff: String,
+    pub(super) checkpoint_tlog_seq: u64,
+    pub(super) created_ms: u64,
+    pub(super) phase: String,
+    pub(super) phase_lane: Option<usize>,
+    pub(super) planner_pending: bool,
+    pub(super) diagnostics_pending: bool,
+    pub(super) diagnostics_text: String,
+    pub(super) last_plan_text: String,
+    pub(super) last_executor_diff: String,
     #[serde(default)]
-    last_solo_plan_text: String,
+    pub(super) last_solo_plan_text: String,
     #[serde(default)]
-    last_solo_executor_diff: String,
-    lanes: Vec<CheckpointLane>,
-    verifier_summary: Vec<String>,
-    verifier_pending_results: Vec<ResumeVerifierItem>,
+    pub(super) last_solo_executor_diff: String,
+    pub(super) lanes: Vec<CheckpointLane>,
+    pub(super) verifier_summary: Vec<String>,
+    pub(super) verifier_pending_results: Vec<ResumeVerifierItem>,
 }
 
-fn checkpoint_path(_workspace: &Path) -> PathBuf {
+pub(super) fn checkpoint_path(_workspace: &Path) -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir()).join("mini_agent_checkpoint.json")
 }
 
-fn cycle_idle_marker_path() -> PathBuf {
+pub(super) fn cycle_idle_marker_path() -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir()).join("orchestrator_cycle_idle.flag")
 }
 
-fn orchestrator_mode_flag_path() -> PathBuf {
+pub(super) fn orchestrator_mode_flag_path() -> PathBuf {
     PathBuf::from(crate::constants::agent_state_dir()).join("orchestrator_mode.flag")
 }
 
-fn artifact_signature(parts: &[&str]) -> String {
+pub(super) fn artifact_signature(parts: &[&str]) -> String {
     let mut hasher = DefaultHasher::new();
     parts.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
-fn checkpoint_artifact_path(path: &Path) -> String {
+pub(super) fn checkpoint_artifact_path(path: &Path) -> String {
     let workspace = Path::new(crate::constants::workspace());
     path.strip_prefix(workspace).ok()
         .map(|rel| rel.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"))
 }
 
-fn checkpoint_ref_json(path: &Path, checkpoint_json: &str, tlog_seq: u64) -> String {
+pub(super) fn checkpoint_ref_json(path: &Path, checkpoint_json: &str, tlog_seq: u64) -> String {
     let artifact = checkpoint_artifact_path(path);
     let hash = artifact_signature(&[artifact.as_str(), checkpoint_json, &tlog_seq.to_string()]);
     serde_json::json!({"checkpoint_ref":true,"path":artifact,"bytes":checkpoint_json.len(),"hash":hash,"tlog_seq":tlog_seq}).to_string()
@@ -110,7 +112,7 @@ fn checkpoint_ref_json(path: &Path, checkpoint_json: &str, tlog_seq: u64) -> Str
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) -> Result<()> {
+pub(super) fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) -> Result<()> {
     let workspace = Path::new(crate::constants::workspace());
     let artifact = path
         .strip_prefix(workspace)
@@ -143,7 +145,7 @@ fn persist_agent_state_projection(path: &Path, contents: &str, subject: &str) ->
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn save_checkpoint(
+pub(super) fn save_checkpoint(
     workspace: &Path,
     writer: &mut CanonicalWriter,
     lanes: &[LaneConfig],
@@ -204,7 +206,7 @@ fn save_checkpoint(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn build_checkpoint_lane_snapshots(
+pub(super) fn build_checkpoint_lane_snapshots(
     state: &SystemState,
     lanes: &[LaneConfig],
 ) -> Vec<CheckpointLane> {
@@ -233,7 +235,7 @@ fn build_checkpoint_lane_snapshots(
 /// Invariants: preserves pending verifier order and maps each submitted lane to label, optional plan file, and final executor result
 /// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
-fn build_resume_verifier_items(
+pub(super) fn build_resume_verifier_items(
     lanes: &[LaneConfig],
     verifier_pending_results: &VecDeque<(SubmittedExecutorTurn, u64, String)>,
 ) -> Vec<ResumeVerifierItem> {
@@ -252,7 +254,7 @@ fn build_resume_verifier_items(
     resume_items
 }
 
-fn recover_verifier_item_from_executor_post_restart(
+pub(super) fn recover_verifier_item_from_executor_post_restart(
     lanes: &[LaneConfig],
 ) -> Option<ResumeVerifierItem> {
     let resume = peek_post_restart_result("executor")?;
@@ -281,7 +283,7 @@ fn recover_verifier_item_from_executor_post_restart(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
+pub(super) fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     let tlog_path = PathBuf::from(crate::constants::agent_state_dir()).join("tlog.ndjson");
     if let Some(cp) = load_checkpoint_from_tlog(workspace, &tlog_path) {
         return Some(cp);
@@ -339,7 +341,7 @@ fn load_checkpoint(workspace: &Path) -> Option<OrchestratorCheckpoint> {
     Some(cp)
 }
 
-fn load_checkpoint_from_tlog(
+pub(super) fn load_checkpoint_from_tlog(
     workspace: &Path,
     tlog_path: &Path,
 ) -> Option<OrchestratorCheckpoint> {
@@ -360,10 +362,10 @@ fn load_checkpoint_from_tlog(
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-struct ExecutorProgressSignals {
-    last_progress_seq: Option<u64>,
-    last_progress_ts_ms: Option<u64>,
-    checkpoint_divergence_blockers_recent: usize,
+pub(super) struct ExecutorProgressSignals {
+    pub(super) last_progress_seq: Option<u64>,
+    pub(super) last_progress_ts_ms: Option<u64>,
+    pub(super) checkpoint_divergence_blockers_recent: usize,
 }
 
 /// Intent: canonical_read
@@ -375,7 +377,7 @@ struct ExecutorProgressSignals {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn read_executor_progress_signals(workspace: &Path, now_ms: u64) -> ExecutorProgressSignals {
+pub(super) fn read_executor_progress_signals(workspace: &Path, now_ms: u64) -> ExecutorProgressSignals {
     const SIGNAL_LOOKBACK_RECORDS: usize = 800;
     const DIVERGENCE_WINDOW_MS: u64 = 120_000;
 
@@ -426,14 +428,14 @@ fn read_executor_progress_signals(workspace: &Path, now_ms: u64) -> ExecutorProg
     signals
 }
 
-fn looks_like_diff(raw: &str) -> bool {
+pub(super) fn looks_like_diff(raw: &str) -> bool {
     raw.contains("diff --git")
         || (raw.contains("--- ") && raw.contains("+++ "))
         || raw.contains("@@ ")
         || raw.contains("@@ -")
 }
 
-fn guardrail_action_from_raw(raw: &str, role: &str) -> Option<Value> {
+pub(super) fn guardrail_action_from_raw(raw: &str, role: &str) -> Option<Value> {
     if raw.contains("assistant reaction-only terminal frame:") {
         return Some(guardrail_reaction_only_action(role));
     }

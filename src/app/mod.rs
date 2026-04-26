@@ -67,13 +67,25 @@ use crate::tlog::Tlog;
 use crate::tool_schema::write_tool_examples;
 use crate::tools::write_stage_graph;
 
-// Split into same-directory include shards to keep module visibility flat.
-include!("app_bootstrap.rs");
-include!("app_planner_executor.rs");
-include!("app_submit_completion.rs");
-include!("app_checkpoint_guardrails.rs");
-include!("app_action_io.rs");
-include!("app_inbound_routing.rs");
-include!("app_agent_loop.rs");
-include!("app_runtime_completion.rs");
-include!("app_tests.rs");
+// Same-directory shards are regular modules; app keeps a flat local namespace via scoped imports.
+mod app_action_io;
+mod app_agent_loop;
+mod app_bootstrap;
+mod app_checkpoint_guardrails;
+mod app_inbound_routing;
+mod app_planner_executor;
+mod app_runtime_completion;
+mod app_submit_completion;
+
+use self::app_action_io::*;
+use self::app_agent_loop::*;
+use self::app_bootstrap::*;
+use self::app_checkpoint_guardrails::*;
+use self::app_inbound_routing::*;
+use self::app_planner_executor::*;
+pub use self::app_runtime_completion::run;
+use self::app_runtime_completion::*;
+use self::app_submit_completion::*;
+
+#[cfg(test)]
+mod app_tests;

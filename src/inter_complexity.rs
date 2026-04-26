@@ -112,36 +112,7 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
     // Build callee sequences from bridge_edges: symbol_path → ordered list of callee paths.
     // Two functions are semantic duplicates only if they call the same callees in the same
     // block order — not just share the same MIR structural shape.
-    let mut raw_callee_pairs: HashMap<String, Vec<(usize, String)>> = HashMap::new();
-    for (from, relation, to) in idx.bridge_edges() {
-        if relation != "Call" {
-            continue;
-        }
-        // from pattern: "cfg::{symbol_path}::bb{N}"
-        let Some(bb_pos) = from.rfind("::bb") else {
-            continue;
-        };
-        let Ok(block_idx) = from[bb_pos + 4..].parse::<usize>() else {
-            continue;
-        };
-        let sym_path = &from[5..bb_pos]; // strip "cfg::" prefix (5 chars)
-        raw_callee_pairs
-            .entry(sym_path.to_string())
-            .or_default()
-            .push((block_idx, to));
-    }
-    let callee_seq: HashMap<String, String> = raw_callee_pairs
-        .into_iter()
-        .map(|(sym, mut pairs)| {
-            pairs.sort_by_key(|(idx, _)| *idx);
-            let seq = pairs
-                .into_iter()
-                .map(|(_, c)| c)
-                .collect::<Vec<_>>()
-                .join(",");
-            (sym, seq)
-        })
-        .collect();
+    let callee_seq = inter_callee_sequence_map(&idx);
 
     // Semantic duplicate groups: (mir_fingerprint, signature, callee_sequence) → [symbol, ...]
     // This rejects false positives where structurally identical MIR bodies call different callees.
@@ -264,6 +235,38 @@ pub fn analyze(workspace: &Path, crate_name: &str) -> Result<InterAnalysis> {
         duplicate_groups,
         call_edge_count,
     })
+}
+
+fn inter_callee_sequence_map(idx: &SemanticIndex) -> HashMap<String, String> {
+    let mut raw_callee_pairs: HashMap<String, Vec<(usize, String)>> = HashMap::new();
+    for (from, relation, to) in idx.bridge_edges() {
+        if relation != "Call" {
+            continue;
+        }
+        let Some(bb_pos) = from.rfind("::bb") else {
+            continue;
+        };
+        let Ok(block_idx) = from[bb_pos + 4..].parse::<usize>() else {
+            continue;
+        };
+        let sym_path = &from[5..bb_pos];
+        raw_callee_pairs
+            .entry(sym_path.to_string())
+            .or_default()
+            .push((block_idx, to));
+    }
+    raw_callee_pairs
+        .into_iter()
+        .map(|(sym, mut pairs)| {
+            pairs.sort_by_key(|(idx, _)| *idx);
+            let seq = pairs
+                .into_iter()
+                .map(|(_, c)| c)
+                .collect::<Vec<_>>()
+                .join(",");
+            (sym, seq)
+        })
+        .collect()
 }
 
 fn inter_call_maps(

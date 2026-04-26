@@ -1,9 +1,11 @@
+use super::*;
+
 // ── Agent loop ─────────────────────────────────────────────────────────────────
 
 /// Run one agent role until it calls `message` with status=complete or exhausts MAX_STEPS.
 /// Returns the typed completion on success, or an error on hard failure.
 /// `check_on_done`: if true, run cargo build + test before accepting completion.
-async fn run_agent(
+pub(super) async fn run_agent(
     role: &str,
     prompt_kind: &str,
     system_instructions: &str,
@@ -586,7 +588,7 @@ async fn run_agent(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn write_post_restart_result(
+pub(super) fn write_post_restart_result(
     role: &str,
     action: &str,
     result: &str,
@@ -642,7 +644,7 @@ fn write_post_restart_result(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn build_post_restart_result_payload(
+pub(super) fn build_post_restart_result_payload(
     role: &str,
     action: &str,
     result: &str,
@@ -666,19 +668,19 @@ fn build_post_restart_result_payload(
     })
 }
 
-struct PostRestartResultPayload<'a> {
-    role: &'a str,
-    action: &'a str,
-    result: &'a str,
-    step: usize,
-    tab_id: Option<u32>,
-    turn_id: Option<u64>,
-    endpoint_id: &'a str,
-    restart_kind: &'a str,
-    signature: &'a str,
+pub(super) struct PostRestartResultPayload<'a> {
+    pub(super) role: &'a str,
+    pub(super) action: &'a str,
+    pub(super) result: &'a str,
+    pub(super) step: usize,
+    pub(super) tab_id: Option<u32>,
+    pub(super) turn_id: Option<u64>,
+    pub(super) endpoint_id: &'a str,
+    pub(super) restart_kind: &'a str,
+    pub(super) signature: &'a str,
 }
 
-fn post_restart_result_payload_json(payload: PostRestartResultPayload<'_>) -> serde_json::Value {
+pub(super) fn post_restart_result_payload_json(payload: PostRestartResultPayload<'_>) -> serde_json::Value {
     serde_json::json!({
         "role": payload.role,
         "action": payload.action,
@@ -693,33 +695,33 @@ fn post_restart_result_payload_json(payload: PostRestartResultPayload<'_>) -> se
 }
 
 #[derive(Clone, Debug)]
-struct PostRestartResult {
-    role: String,
-    action: String,
-    result: String,
-    step: usize,
-    tab_id: Option<u32>,
-    turn_id: Option<u64>,
-    endpoint_id: String,
-    restart_kind: String,
-    signature: String,
+pub(super) struct PostRestartResult {
+    pub(super) role: String,
+    pub(super) action: String,
+    pub(super) result: String,
+    pub(super) step: usize,
+    pub(super) tab_id: Option<u32>,
+    pub(super) turn_id: Option<u64>,
+    pub(super) endpoint_id: String,
+    pub(super) restart_kind: String,
+    pub(super) signature: String,
 }
 
 #[derive(Clone, Debug)]
-enum AgentCompletion {
+pub(super) enum AgentCompletion {
     Summary(String),
     MessageAction { action: Value, summary: String },
 }
 
 impl AgentCompletion {
-    fn summary_text(&self) -> &str {
+    pub(super) fn summary_text(&self) -> &str {
         match self {
             Self::Summary(summary) => summary,
             Self::MessageAction { summary, .. } => summary,
         }
     }
 
-    fn into_summary(self) -> String {
+    pub(super) fn into_summary(self) -> String {
         match self {
             Self::Summary(summary) => summary,
             Self::MessageAction { summary, .. } => summary,
@@ -736,7 +738,7 @@ impl AgentCompletion {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring + rustc:effects
-fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
+pub(super) fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
     let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
     if tlog_path.exists() {
         if let Some(result) = peek_post_restart_result_from_tlog(role, &tlog_path) {
@@ -799,7 +801,7 @@ fn peek_post_restart_result(role: &str) -> Option<PostRestartResult> {
     })
 }
 
-fn peek_post_restart_result_from_tlog(
+pub(super) fn peek_post_restart_result_from_tlog(
     role: &str,
     tlog_path: &std::path::Path,
 ) -> Option<PostRestartResult> {
@@ -848,7 +850,7 @@ fn peek_post_restart_result_from_tlog(
     None
 }
 
-fn post_restart_role_key(role: &str) -> &str {
+pub(super) fn post_restart_role_key(role: &str) -> &str {
     if role.starts_with("executor") {
         "executor"
     } else {
@@ -858,7 +860,7 @@ fn post_restart_role_key(role: &str) -> &str {
 
 /// Read and consume the post-restart result file.  Returns `Some(result)` if the
 /// file exists and was written by `role`, then deletes the file.
-fn take_post_restart_result(role: &str) -> Option<PostRestartResult> {
+pub(super) fn take_post_restart_result(role: &str) -> Option<PostRestartResult> {
     let result = peek_post_restart_result(role)?;
     let tlog_path = std::path::Path::new(crate::constants::agent_state_dir()).join("tlog.ndjson");
     if tlog_path.exists() {
@@ -887,7 +889,7 @@ fn take_post_restart_result(role: &str) -> Option<PostRestartResult> {
     Some(result)
 }
 
-fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
+pub(super) fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
     let agent_type = role_key(role).to_uppercase();
     let tab_id = resume
         .tab_id
@@ -924,7 +926,7 @@ fn restart_resume_banner(role: &str, resume: &PostRestartResult) -> String {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a LlmEndpoint> {
+pub(super) fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a LlmEndpoint> {
     endpoints
         .iter()
         .find(|e| e.role.as_deref() == Some(role))
@@ -940,7 +942,7 @@ fn find_endpoint<'a>(endpoints: &'a [LlmEndpoint], role: &str) -> Result<&'a Llm
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn build_endpoints() -> Vec<LlmEndpoint> {
+pub(super) fn build_endpoints() -> Vec<LlmEndpoint> {
     ENDPOINT_SPECS
         .iter()
         .map(|spec| LlmEndpoint {
@@ -955,33 +957,33 @@ fn build_endpoints() -> Vec<LlmEndpoint> {
 }
 
 #[derive(Clone)]
-struct PendingSubmitState {
-    job: PendingExecutorSubmit,
-    started_ms: u64,
-    command_id: String,
-    endpoint_id: String,
-    tabs: TabManagerHandle,
+pub(super) struct PendingSubmitState {
+    pub(super) job: PendingExecutorSubmit,
+    pub(super) started_ms: u64,
+    pub(super) command_id: String,
+    pub(super) endpoint_id: String,
+    pub(super) tabs: TabManagerHandle,
 }
 
 #[derive(Clone)]
-struct DeferredExecutorCompletion {
-    submitted: SubmittedExecutorTurn,
-    turn_id: u64,
-    tab_id: u32,
-    exec_result: String,
+pub(super) struct DeferredExecutorCompletion {
+    pub(super) submitted: SubmittedExecutorTurn,
+    pub(super) turn_id: u64,
+    pub(super) tab_id: u32,
+    pub(super) exec_result: String,
 }
 
 /// Non-serializable runtime-only state.  Everything serializable now lives in
 /// `SystemState` (owned by `CanonicalWriter`); this struct holds the objects
 /// that contain live OS handles and are therefore not checkpoint-able.
-struct RuntimeState {
-    submitted_turns: HashMap<(u32, u64), SubmittedExecutorTurn>,
-    executor_submit_inflight: HashMap<usize, PendingSubmitState>,
-    timed_out_executor_submits: HashMap<usize, PendingSubmitState>,
-    deferred_completions: HashMap<usize, VecDeque<DeferredExecutorCompletion>>,
+pub(super) struct RuntimeState {
+    pub(super) submitted_turns: HashMap<(u32, u64), SubmittedExecutorTurn>,
+    pub(super) executor_submit_inflight: HashMap<usize, PendingSubmitState>,
+    pub(super) timed_out_executor_submits: HashMap<usize, PendingSubmitState>,
+    pub(super) deferred_completions: HashMap<usize, VecDeque<DeferredExecutorCompletion>>,
 }
 
-fn new_runtime_state(lanes: &[LaneConfig]) -> RuntimeState {
+pub(super) fn new_runtime_state(lanes: &[LaneConfig]) -> RuntimeState {
     let mut deferred_completions = HashMap::new();
     for lane in lanes {
         deferred_completions.insert(lane.index, VecDeque::new());
@@ -995,19 +997,19 @@ fn new_runtime_state(lanes: &[LaneConfig]) -> RuntimeState {
 }
 
 #[derive(Clone)]
-struct SubmittedExecutorTurn {
-    tab_id: u32,
-    lane: usize,
-    lane_label: String,
-    command_id: String,
-    started_ms: u64,
-    actor: String,
-    endpoint_id: String,
-    tabs: TabManagerHandle,
-    steps_used: usize,
+pub(super) struct SubmittedExecutorTurn {
+    pub(super) tab_id: u32,
+    pub(super) lane: usize,
+    pub(super) lane_label: String,
+    pub(super) command_id: String,
+    pub(super) started_ms: u64,
+    pub(super) actor: String,
+    pub(super) endpoint_id: String,
+    pub(super) tabs: TabManagerHandle,
+    pub(super) steps_used: usize,
 }
 
-type ContinuationJoinOutput = (
+pub(super) type ContinuationJoinOutput = (
     SubmittedExecutorTurn,
     u64,
     Result<AgentCompletion>,
@@ -1015,13 +1017,13 @@ type ContinuationJoinOutput = (
 );
 
 #[derive(Clone)]
-struct PendingExecutorSubmit {
-    executor_name: String,
-    executor_display: String,
-    lane_index: usize,
-    label: String,
-    latest_verify_result: String,
-    executor_role: String,
+pub(super) struct PendingExecutorSubmit {
+    pub(super) executor_name: String,
+    pub(super) executor_display: String,
+    pub(super) lane_index: usize,
+    pub(super) label: String,
+    pub(super) latest_verify_result: String,
+    pub(super) executor_role: String,
 }
 
 /// Intent: pure_transform
@@ -1033,7 +1035,7 @@ struct PendingExecutorSubmit {
 /// Invariants: returns tab_id, turn_id, and optional command_id only when submit_ack is true and required ids are present
 /// Failure: malformed JSON, missing required ids, or non-ack payloads return None
 /// Provenance: rustc:facts + rustc:docstring
-fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
+pub(super) fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
     let v: Value = serde_json::from_str(raw).ok()?;
     if v.get("submit_ack").and_then(|x| x.as_bool()) != Some(true) {
         return None;
@@ -1047,7 +1049,7 @@ fn parse_submit_ack(raw: &str) -> Option<(u32, u64, Option<String>)> {
     Some((tab_id, turn_id, command_id))
 }
 
-fn parsed_completion_command_summary(action: &serde_json::Value) -> String {
+pub(super) fn parsed_completion_command_summary(action: &serde_json::Value) -> String {
     let kind = action
         .get("action")
         .and_then(|v| v.as_str())
@@ -1086,7 +1088,7 @@ fn parsed_completion_command_summary(action: &serde_json::Value) -> String {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn append_executor_completion_log(
+pub(super) fn append_executor_completion_log(
     submitted: &SubmittedExecutorTurn,
     step: usize,
     turn_id: u64,
@@ -1113,13 +1115,13 @@ fn append_executor_completion_log(
     append_action_log_record(&record)
 }
 
-struct ParsedExecutorCompletion {
-    observation: Option<String>,
-    rationale: Option<String>,
-    action_summary: Option<Value>,
+pub(super) struct ParsedExecutorCompletion {
+    pub(super) observation: Option<String>,
+    pub(super) rationale: Option<String>,
+    pub(super) action_summary: Option<Value>,
 }
 
-fn parsed_executor_completion(text: &str) -> ParsedExecutorCompletion {
+pub(super) fn parsed_executor_completion(text: &str) -> ParsedExecutorCompletion {
     let parsed = parse_actions(text)
         .ok()
         .and_then(|actions| actions.into_iter().next());

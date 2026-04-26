@@ -1,4 +1,6 @@
-fn guardrail_reaction_only_action(role: &str) -> Value {
+use super::*;
+
+pub(super) fn guardrail_reaction_only_action(role: &str) -> Value {
     let _ = role;
     let path = "canon-utils";
     json!({
@@ -9,7 +11,7 @@ fn guardrail_reaction_only_action(role: &str) -> Value {
     })
 }
 
-fn guardrail_diff_message_action(raw: &str, role: &str) -> Value {
+pub(super) fn guardrail_diff_message_action(raw: &str, role: &str) -> Value {
     let (from, to, msg_type, status) = default_message_route(role);
     json!({
         "action": "message",
@@ -23,7 +25,7 @@ fn guardrail_diff_message_action(raw: &str, role: &str) -> Value {
     })
 }
 
-fn guardrail_diff_message_payload(
+pub(super) fn guardrail_diff_message_payload(
     raw: &str,
     from: &str,
     to: &str,
@@ -37,7 +39,7 @@ fn guardrail_diff_message_payload(
     })
 }
 
-fn apply_error_result(
+pub(super) fn apply_error_result(
     role: &str,
     task_context: &str,
     error_streak: &mut usize,
@@ -58,9 +60,9 @@ fn apply_error_result(
     }
 }
 
-struct InvalidActionFeedback {
-    err_text: String,
-    feedback: String,
+pub(super) struct InvalidActionFeedback {
+    pub(super) err_text: String,
+    pub(super) feedback: String,
 }
 
 /// Intent: pure_transform
@@ -72,7 +74,7 @@ struct InvalidActionFeedback {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn parse_action_from_raw(
+pub(super) fn parse_action_from_raw(
     role: &str,
     endpoint: &LlmEndpoint,
     prompt_kind: &str,
@@ -130,7 +132,7 @@ fn parse_action_from_raw(
     Ok(action)
 }
 
-fn handle_parse_actions_error(
+pub(super) fn handle_parse_actions_error(
     role: &str,
     step: usize,
     raw: &str,
@@ -163,7 +165,7 @@ fn handle_parse_actions_error(
     })
 }
 
-fn maybe_guardrail_parse_action(
+pub(super) fn maybe_guardrail_parse_action(
     role: &str,
     raw: &str,
     allow_guardrail: bool,
@@ -194,7 +196,7 @@ fn maybe_guardrail_parse_action(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn extract_single_action(
+pub(super) fn extract_single_action(
     role: &str,
     step: usize,
     raw: &str,
@@ -209,7 +211,7 @@ fn extract_single_action(
     Ok(actions.into_iter().next().expect("validated single action"))
 }
 
-fn single_action_count_feedback(
+pub(super) fn single_action_count_feedback(
     role: &str,
     step: usize,
     raw: &str,
@@ -239,7 +241,7 @@ fn single_action_count_feedback(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn normalize_action_or_feedback(
+pub(super) fn normalize_action_or_feedback(
     role: &str,
     raw: &str,
     raw_action: &Value,
@@ -277,7 +279,7 @@ fn normalize_action_or_feedback(
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn validate_action_or_feedback(
+pub(super) fn validate_action_or_feedback(
     role: &str,
     raw: &str,
     action: &Value,
@@ -296,7 +298,7 @@ fn validate_action_or_feedback(
     Ok(())
 }
 
-fn handle_invalid_action_error(
+pub(super) fn handle_invalid_action_error(
     role: &str,
     raw: &str,
     action: &Value,
@@ -313,7 +315,7 @@ fn handle_invalid_action_error(
     invalid_action_feedback(action, err_text, role)
 }
 
-fn log_invalid_action_validation(
+pub(super) fn log_invalid_action_validation(
     raw: &str,
     action: &Value,
     log: &impl Fn(&str, Value),
@@ -330,14 +332,14 @@ fn log_invalid_action_validation(
     );
 }
 
-fn invalid_action_feedback(action: &Value, err_text: &str, role: &str) -> InvalidActionFeedback {
+pub(super) fn invalid_action_feedback(action: &Value, err_text: &str, role: &str) -> InvalidActionFeedback {
     InvalidActionFeedback {
         err_text: err_text.to_string(),
         feedback: build_invalid_action_feedback(Some(action), err_text, role),
     }
 }
 
-fn invalid_action_feedback_with_prompt(
+pub(super) fn invalid_action_feedback_with_prompt(
     action: &Value,
     err_text: &str,
     role: &str,
@@ -353,7 +355,7 @@ fn invalid_action_feedback_with_prompt(
     }
 }
 
-fn cargo_test_missing_crate_feedback(err_text: &str) -> InvalidActionFeedback {
+pub(super) fn cargo_test_missing_crate_feedback(err_text: &str) -> InvalidActionFeedback {
     InvalidActionFeedback {
         err_text: err_text.to_string(),
         feedback: format!(
@@ -363,14 +365,14 @@ fn cargo_test_missing_crate_feedback(err_text: &str) -> InvalidActionFeedback {
 }
 
 #[derive(Clone, Debug, Default)]
-struct ActionProvenance {
-    task_id: Option<String>,
-    objective_id: Option<String>,
-    intent: Option<String>,
+pub(super) struct ActionProvenance {
+    pub(super) task_id: Option<String>,
+    pub(super) objective_id: Option<String>,
+    pub(super) intent: Option<String>,
 }
 
 impl ActionProvenance {
-    fn from_action(action: &Value) -> Self {
+    pub(super) fn from_action(action: &Value) -> Self {
         Self {
             task_id: action_task_id(action).map(str::to_string),
             objective_id: action_objective_id(action).map(str::to_string),
@@ -388,7 +390,7 @@ impl ActionProvenance {
 /// Invariants: no_external_effects
 /// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
-fn build_agent_prompt(
+pub(super) fn build_agent_prompt(
     role: &str,
     send_system_prompt: bool,
     step: usize,
@@ -442,7 +444,7 @@ fn build_agent_prompt(
     }
 }
 
-fn should_send_system_prompt(
+pub(super) fn should_send_system_prompt(
     send_system_prompt: bool,
     endpoint_stateful: bool,
     step: usize,
@@ -450,7 +452,7 @@ fn should_send_system_prompt(
     send_system_prompt && (!endpoint_stateful || step == 0)
 }
 
-fn enforce_executor_step_limit(
+pub(super) fn enforce_executor_step_limit(
     role: &str,
     total_steps: usize,
     error_streak: &mut usize,
@@ -476,13 +478,13 @@ fn enforce_executor_step_limit(
     false
 }
 
-struct RoleStepLimit {
-    role_label: &'static str,
-    limit: usize,
-    feedback: fn() -> String,
+pub(super) struct RoleStepLimit {
+    pub(super) role_label: &'static str,
+    pub(super) limit: usize,
+    pub(super) feedback: fn() -> String,
 }
 
-fn step_limit_for_role(role: &str) -> Option<RoleStepLimit> {
+pub(super) fn step_limit_for_role(role: &str) -> Option<RoleStepLimit> {
     if role.starts_with("planner") {
         Some(RoleStepLimit {
             role_label: "planner",
@@ -500,13 +502,13 @@ fn step_limit_for_role(role: &str) -> Option<RoleStepLimit> {
     }
 }
 
-fn executor_step_limit_feedback() -> String {
+pub(super) fn executor_step_limit_feedback() -> String {
     format!(
         "Step limit reached after {EXECUTOR_STEP_LIMIT} actions.\nPreferred action now: emit a `plan` status update, not a routine handoff message.\n\nPrimary path (use this unless truly blocked):\n```json\n{{\n  \"action\": \"plan\",\n  \"op\": \"set_task_status\",\n  \"task_id\": \"<active_task_id>\",\n  \"status\": \"done\" | \"in_progress\",\n  \"rationale\": \"Evidence-based completion/progress summary.\"\n}}\n```\n\nOnly if blocked/unresolvable, emit one `message` blocker:\n```json\n{{\n  \"action\": \"message\",\n  \"from\": \"executor\",\n  \"to\": \"planner\",\n  \"type\": \"blocker\",\n  \"status\": \"blocked\",\n  \"observation\": \"Progress is blocked by a concrete failure.\",\n  \"rationale\": \"Planner must resolve the blocker before more executor actions.\",\n  \"payload\": {{\n    \"summary\": \"Executor is blocked.\",\n    \"blocker\": \"Root cause\",\n    \"evidence\": \"Exact error text or failed command\",\n    \"required_action\": \"What planner should do next\"\n  }}\n}}\n```"
     )
 }
 
-fn planner_step_limit_feedback() -> String {
+pub(super) fn planner_step_limit_feedback() -> String {
     use crate::constants::PLANNER_STEP_LIMIT;
     format!(
         "Planning cycle step limit reached ({PLANNER_STEP_LIMIT} actions).\n\
@@ -545,7 +547,7 @@ fn planner_step_limit_feedback() -> String {
     )
 }
 
-fn canonical_tlog_read_path(agent_state_dir: &std::path::Path) -> PathBuf {
+pub(super) fn canonical_tlog_read_path(agent_state_dir: &std::path::Path) -> PathBuf {
     let workspace_tlog = PathBuf::from(crate::constants::workspace())
         .join("agent_state")
         .join("tlog.ndjson");
@@ -567,19 +569,19 @@ fn canonical_tlog_read_path(agent_state_dir: &std::path::Path) -> PathBuf {
 }
 
 #[derive(Clone, Copy)]
-enum RecordedMessageKind {
+pub(super) enum RecordedMessageKind {
     Inbound,
     ExternalUser,
 }
 
-fn normalized_role_key(role: &str) -> String {
+pub(super) fn normalized_role_key(role: &str) -> String {
     role
         .trim()
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
 }
 
-fn recorded_message_projection_path(
+pub(super) fn recorded_message_projection_path(
     agent_state_dir: &std::path::Path,
     role_key: &str,
     kind: RecordedMessageKind,
@@ -594,7 +596,7 @@ fn recorded_message_projection_path(
     }
 }
 
-fn recorded_message_consumed_event(
+pub(super) fn recorded_message_consumed_event(
     kind: RecordedMessageKind,
     role: String,
     signature: String,
@@ -607,7 +609,7 @@ fn recorded_message_consumed_event(
     }
 }
 
-fn pending_recorded_message_from_state(
+pub(super) fn pending_recorded_message_from_state(
     state: &SystemState,
     role_key: &str,
     kind: RecordedMessageKind,
@@ -625,7 +627,7 @@ fn pending_recorded_message_from_state(
     }
 }
 
-fn latest_recorded_message_from_tlog(
+pub(super) fn latest_recorded_message_from_tlog(
     agent_state_dir: &std::path::Path,
     role: &str,
     kind: RecordedMessageKind,
@@ -664,7 +666,7 @@ fn latest_recorded_message_from_tlog(
     .ok()?
 }
 
-fn canonical_recorded_message_from_tlog(
+pub(super) fn canonical_recorded_message_from_tlog(
     agent_state_dir: &std::path::Path,
     state: &SystemState,
     role: &str,
@@ -684,7 +686,7 @@ fn canonical_recorded_message_from_tlog(
     }
 }
 
-fn take_recorded_message(
+pub(super) fn take_recorded_message(
     writer: &mut CanonicalWriter,
     role: &str,
     kind: RecordedMessageKind,
@@ -707,15 +709,15 @@ fn take_recorded_message(
     None
 }
 
-fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
+pub(super) fn take_inbound_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
     take_recorded_message(writer, role, RecordedMessageKind::Inbound)
 }
 
-fn take_inbound_message_without_writer(role: &str) -> Option<String> {
+pub(super) fn take_inbound_message_without_writer(role: &str) -> Option<String> {
     take_recorded_message_without_writer(role, RecordedMessageKind::Inbound)
 }
 
-fn take_recorded_message_without_writer(
+pub(super) fn take_recorded_message_without_writer(
     role: &str,
     kind: RecordedMessageKind,
 ) -> Option<String> {
@@ -756,11 +758,11 @@ fn take_recorded_message_without_writer(
     None
 }
 
-fn take_external_user_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
+pub(super) fn take_external_user_message(writer: &mut CanonicalWriter, role: &str) -> Option<String> {
     take_recorded_message(writer, role, RecordedMessageKind::ExternalUser)
 }
 
-fn take_external_user_message_without_writer(role: &str) -> Option<String> {
+pub(super) fn take_external_user_message_without_writer(role: &str) -> Option<String> {
     take_recorded_message_without_writer(role, RecordedMessageKind::ExternalUser)
 }
 
@@ -773,7 +775,7 @@ fn take_external_user_message_without_writer(role: &str) -> Option<String> {
 /// Invariants: no_external_effects, deterministic_for_same_inputs
 /// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
-fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
+pub(super) fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     let parsed = serde_json::from_str::<Value>(inbound).ok();
     let message = parsed
         .as_ref()
@@ -791,7 +793,7 @@ fn append_external_user_message_to_prompt(prompt: &mut String, inbound: &str) {
     );
 }
 
-fn executor_result_highlight_lines(executor_result: &str) -> Vec<String> {
+pub(super) fn executor_result_highlight_lines(executor_result: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in executor_result.lines() {
         let trimmed = line.trim();
@@ -823,7 +825,7 @@ fn executor_result_highlight_lines(executor_result: &str) -> Vec<String> {
     out
 }
 
-fn append_executor_result_summary(out: &mut String, executor_result: &str) {
+pub(super) fn append_executor_result_summary(out: &mut String, executor_result: &str) {
     let highlights = executor_result_highlight_lines(executor_result);
     if highlights.is_empty() {
         out.push_str(&format!(
@@ -847,7 +849,7 @@ fn append_executor_result_summary(out: &mut String, executor_result: &str) {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn summarize_inbound_message(inbound: &str, role: &str) -> String {
+pub(super) fn summarize_inbound_message(inbound: &str, role: &str) -> String {
     let Ok(value) = serde_json::from_str::<Value>(inbound) else {
         return truncate(inbound.trim(), 1600).to_string();
     };
@@ -946,7 +948,7 @@ fn summarize_inbound_message(inbound: &str, role: &str) -> String {
 /// Invariants: user-origin inbound messages append external-user policy reminder
 /// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
-fn append_inbound_to_prompt(prompt: &mut String, inbound: &str, role: &str) {
+pub(super) fn append_inbound_to_prompt(prompt: &mut String, inbound: &str, role: &str) {
     prompt.push_str("\n\nInbound handoff message summary:\n");
     prompt.push_str(&summarize_inbound_message(inbound, role));
     prompt.push('\n');
@@ -957,7 +959,7 @@ fn append_inbound_to_prompt(prompt: &mut String, inbound: &str, role: &str) {
     }
 }
 
-fn inbound_message_from_user(inbound: &str) -> bool {
+pub(super) fn inbound_message_from_user(inbound: &str) -> bool {
     serde_json::from_str::<Value>(inbound)
         .ok()
         .and_then(|value| {
@@ -969,7 +971,7 @@ fn inbound_message_from_user(inbound: &str) -> bool {
         .is_some_and(|from| from.eq_ignore_ascii_case("user"))
 }
 
-fn inject_inbound_message(prompt: &mut String, writer: &mut CanonicalWriter, role: &str) {
+pub(super) fn inject_inbound_message(prompt: &mut String, writer: &mut CanonicalWriter, role: &str) {
     if let Some(inbound) = take_external_user_message(writer, role) {
         append_external_user_message_to_prompt(prompt, &inbound);
         return;
@@ -988,7 +990,7 @@ fn inject_inbound_message(prompt: &mut String, writer: &mut CanonicalWriter, rol
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
-fn extract_message_action(raw: &str) -> Option<String> {
+pub(super) fn extract_message_action(raw: &str) -> Option<String> {
     let marker = "message_action:";
     let idx = raw.find(marker)?;
     let after = raw[idx + marker.len()..].trim_start();
@@ -1003,7 +1005,7 @@ fn extract_message_action(raw: &str) -> Option<String> {
     Some(json_text.to_string())
 }
 
-fn is_reaction_only_response(raw: &str) -> bool {
+pub(super) fn is_reaction_only_response(raw: &str) -> bool {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return false;
@@ -1014,20 +1016,20 @@ fn is_reaction_only_response(raw: &str) -> bool {
     has_reaction_only_marker(trimmed) || is_short_symbol_only_text(trimmed) || has_no_json_marker(trimmed)
 }
 
-fn has_reaction_only_marker(trimmed: &str) -> bool {
+pub(super) fn has_reaction_only_marker(trimmed: &str) -> bool {
     trimmed.starts_with("assistant reaction-only terminal frame")
         || trimmed.starts_with("assistant reaction-only")
 }
 
-fn is_short_symbol_only_text(trimmed: &str) -> bool {
+pub(super) fn is_short_symbol_only_text(trimmed: &str) -> bool {
     trimmed.len() <= 8 && trimmed.chars().all(|c| !c.is_ascii_alphanumeric())
 }
 
-fn has_no_json_marker(trimmed: &str) -> bool {
+pub(super) fn has_no_json_marker(trimmed: &str) -> bool {
     !trimmed.contains('{') && !trimmed.contains('[')
 }
 
-fn is_transient_service_response(raw: &str) -> bool {
+pub(super) fn is_transient_service_response(raw: &str) -> bool {
     let lowered = raw.to_ascii_lowercase();
     lowered.contains("having trouble processing your request")
         || (lowered.contains("i'm sorry")
@@ -1035,7 +1037,7 @@ fn is_transient_service_response(raw: &str) -> bool {
             && lowered.contains("processing"))
 }
 
-fn apply_scheduled_phase_if_changed(writer: &mut CanonicalWriter, phase: Option<&str>) -> bool {
+pub(super) fn apply_scheduled_phase_if_changed(writer: &mut CanonicalWriter, phase: Option<&str>) -> bool {
     if writer.state().scheduled_phase.as_deref() == phase {
         return false;
     }
@@ -1045,7 +1047,7 @@ fn apply_scheduled_phase_if_changed(writer: &mut CanonicalWriter, phase: Option<
     true
 }
 
-fn apply_planner_pending_if_changed(writer: &mut CanonicalWriter, pending: bool) -> bool {
+pub(super) fn apply_planner_pending_if_changed(writer: &mut CanonicalWriter, pending: bool) -> bool {
     if writer.state().planner_pending == pending {
         return false;
     }
