@@ -73,6 +73,20 @@ pub struct RecoveryDecision {
     pub canonical_actions: Vec<RecoveryAction>,
 }
 
+/// Canonical bridge from repeated failure class to the planner-visible repair
+/// task that must carry the fix.  This is intentionally deterministic: the same
+/// `failure_class` always yields the same `repair_plan_id` and PLAN mutation
+/// template.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CanonicalRepairBinding {
+    pub failure_class: String,
+    pub recovery_policy: String,
+    pub repair_plan_id: String,
+    pub plan_mutation_template: String,
+    pub persisted_policy: String,
+    pub verify_policy: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct RecoveryConfig {
     pub thresholds: Vec<RecoveryThreshold>,
@@ -344,6 +358,57 @@ pub fn reason_mentions_error_class(lowercase_reason: &str, class: &ErrorClass) -
     lowercase_reason.contains(key) || lowercase_reason.contains(&key.replace('_', " "))
 }
 
+pub fn error_class_from_key(key: &str) -> Option<ErrorClass> {
+    ErrorClass::ALL
+        .iter()
+        .find(|class| class.as_key() == key)
+        .cloned()
+}
+
+pub fn canonical_repair_binding_for_class(class: &ErrorClass) -> CanonicalRepairBinding {
+    canonical_repair_binding_for_key(class.as_key())
+}
+
+pub fn canonical_repair_binding_for_key(class_key: &str) -> CanonicalRepairBinding {
+    let config = RecoveryConfig::default();
+    let recovery_policy = error_class_from_key(class_key)
+        .and_then(|class| {
+            config
+                .threshold_for_class(&class)
+                .map(|threshold| threshold.policy.as_key().to_string())
+        })
+        .unwrap_or_else(|| "escalate_diagnostics".to_string());
+    let repair_plan_id = format!("blocker_class:{class_key}");
+    let title = format!("Canonical recovery policy for {class_key}");
+    let description = format!(
+        "Implement default behavior for failure_class `{class_key}`: map it to \
+        recovery_policy `{recovery_policy}`, bind future work to repair_plan_id \
+        `{repair_plan_id}`, and persist invariant/policy evidence before closure."
+    );
+    let plan_mutation_template = format!(
+        "plan(op=create_task|update_task, repair_plan_id=\"{repair_plan_id}\", \
+        status=\"ready\", title=\"{title}\", description=\"{description}\")"
+    );
+    let persisted_policy = format!(
+        "default_behavior: failure_class={class_key} recovery_policy={recovery_policy} \
+        repair_plan_id={repair_plan_id}; close only after recovery.rs/invariant_discovery.rs \
+        or explicit invariant collapse preserves this behavior"
+    );
+    let verify_policy = format!(
+        "same_failure_reuse: every open PLAN task for failure_class={class_key} must \
+        use repair_plan_id={repair_plan_id}; eval must emit PlanVerifyRecorded for \
+        that id before closure"
+    );
+    CanonicalRepairBinding {
+        failure_class: class_key.to_string(),
+        recovery_policy,
+        repair_plan_id,
+        plan_mutation_template,
+        persisted_policy,
+        verify_policy,
+    }
+}
+
 pub fn canonical_actions_for_policy(policy: &RecoveryPolicy) -> Vec<RecoveryAction> {
     match policy {
         RecoveryPolicy::ClearExecutorAndWakePlanner => vec![
@@ -426,6 +491,21 @@ mod tests {
         assert!(decision
             .canonical_actions
             .contains(&RecoveryAction::RetryRole));
+    }
+
+    #[test]
+    fn canonical_repair_binding_is_stable_by_failure_class() {
+        let a = canonical_repair_binding_for_class(&ErrorClass::LlmTimeout);
+        let b = canonical_repair_binding_for_key("llm_timeout");
+
+        assert_eq!(a, b);
+        assert_eq!(a.repair_plan_id, "blocker_class:llm_timeout");
+        assert_eq!(a.recovery_policy, "retire_transport_and_retry");
+        assert!(a
+            .plan_mutation_template
+            .contains("repair_plan_id=\"blocker_class:llm_timeout\""));
+        assert!(a.persisted_policy.contains("default_behavior"));
+        assert!(a.verify_policy.contains("same_failure_reuse"));
     }
 
     #[test]

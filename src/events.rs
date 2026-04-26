@@ -453,6 +453,15 @@ pub enum EffectEvent {
         threshold: usize,
         window_ms: u64,
     },
+    CanonicalRepairPolicyRecorded {
+        generated_at_ms: u64,
+        class: String,
+        policy: String,
+        repair_plan_id: String,
+        plan_mutation_template: String,
+        persisted_policy: String,
+        verify_policy: String,
+    },
     ProjectionRefreshRecoveryRequested {
         generated_at_ms: u64,
         class: String,

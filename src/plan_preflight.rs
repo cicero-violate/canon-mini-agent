@@ -373,9 +373,10 @@ fn log_preflight_bounces(_workspace: &Path, bounces: &[PreflightBounce]) {
 /// PLAN.json.  Returns the ids of plans with no matching open task.
 ///
 /// "Open" means status ∈ {ready, in_progress, needs_planning}.
-/// Matching is by task.repair_plan_id == plan.id (exact) OR by the plan's
-/// metric/class name appearing in task.title or task.description (heuristic
-/// fallback for tasks created before this field was added).
+/// Matching is by task.repair_plan_id == plan.id (exact).  Legacy heuristic
+/// title/description matching is still accepted for eval_metric/invariant plans,
+/// but blocker_class recovery plans are strict because same failure must map to
+/// the same persisted plan mutation.
 pub fn plans_without_open_tasks(workspace: &Path) -> Vec<String> {
     let plan_raw =
         match std::fs::read_to_string(workspace.join(crate::constants::MASTER_PLAN_FILE)) {
@@ -393,8 +394,8 @@ pub fn plans_without_open_tasks(workspace: &Path) -> Vec<String> {
 
     let open_statuses = ["ready", "in_progress", "needs_planning"];
 
-    // Collect open task text for heuristic matching.
-    let open_task_texts: Vec<String> = tasks
+    // Collect open task bindings and text for matching.
+    let open_task_records: Vec<(String, String)> = tasks
         .iter()
         .filter(|t| {
             t.get("status")
@@ -409,7 +410,7 @@ pub fn plans_without_open_tasks(workspace: &Path) -> Vec<String> {
                 .unwrap_or("");
             let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("");
             let desc = t.get("description").and_then(|v| v.as_str()).unwrap_or("");
-            format!("{plan_id} {title} {desc}")
+            (plan_id.to_string(), format!("{plan_id} {title} {desc}"))
         })
         .collect();
 
@@ -442,9 +443,13 @@ pub fn plans_without_open_tasks(workspace: &Path) -> Vec<String> {
                 .split(':')
                 .nth(1)
                 .unwrap_or(&plan.id);
-            let has_open_task = open_task_texts.iter().any(|text| {
+            let has_exact_task = open_task_records
+                .iter()
+                .any(|(repair_plan_id, _)| repair_plan_id == &plan.id);
+            let has_legacy_task = plan.kind != "blocker_class" && open_task_records.iter().any(|(_, text)| {
                 text.contains(&plan.id) || text.contains(name)
             });
+            let has_open_task = has_exact_task || has_legacy_task;
             !has_open_task
         })
         .map(|plan| plan.id.clone())

@@ -1,5 +1,11 @@
 use super::*;
 
+/// Intent: guardrail_action_recovery
+/// Resource: action_payload
+/// Inputs: role name used only for signature compatibility
+/// Outputs: deterministic list_dir discovery action payload
+/// Effects: none
+/// Invariants: reaction-only responses are converted into concrete discovery actions
 pub(super) fn guardrail_reaction_only_action(role: &str) -> Value {
     let _ = role;
     let path = "canon-utils";
@@ -11,11 +17,23 @@ pub(super) fn guardrail_reaction_only_action(role: &str) -> Value {
     })
 }
 
+/// Intent: guardrail_action_recovery
+/// Resource: action_payload
+/// Inputs: raw diff text and source role
+/// Outputs: deterministic message action envelope containing a bounded diff excerpt
+/// Effects: none
+/// Invariants: diff-only output is wrapped as a valid inter-agent message action
 pub(super) fn guardrail_diff_message_action(raw: &str, role: &str) -> Value {
     let (from, to, msg_type, status) = default_message_route(role);
     guardrail_diff_message_envelope(raw, from, to, msg_type, status)
 }
 
+/// Intent: guardrail_action_recovery
+/// Resource: action_payload
+/// Inputs: raw diff text plus explicit route fields
+/// Outputs: deterministic message action envelope
+/// Effects: none
+/// Invariants: payload includes expected message format and bounded diff excerpt
 fn guardrail_diff_message_envelope(
     raw: &str,
     from: &str,
@@ -35,6 +53,12 @@ fn guardrail_diff_message_envelope(
     })
 }
 
+/// Intent: guardrail_action_recovery
+/// Resource: action_payload
+/// Inputs: raw diff text plus explicit route fields
+/// Outputs: deterministic message payload with truncated diff excerpt
+/// Effects: none
+/// Invariants: raw diff excerpt is bounded before entering prompt-visible payloads
 pub(super) fn guardrail_diff_message_payload(
     raw: &str,
     from: &str,
@@ -49,6 +73,12 @@ pub(super) fn guardrail_diff_message_payload(
     })
 }
 
+/// Intent: error_state_update
+/// Resource: executor_state
+/// Inputs: role, task context, mutable error/result state, error text, default result
+/// Outputs: updated error streak, last error, and last result fields
+/// Effects: mutates caller-provided error tracking fields only
+/// Invariants: repeated errors escalate to blocker prompt once force threshold is reached
 pub(super) fn apply_error_result(
     role: &str,
     task_context: &str,

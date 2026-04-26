@@ -1,0 +1,332 @@
+*** Begin Patch
+*** Update File: src/recovery.rs
+@@
+ pub struct RecoveryDecision {
+     pub class: ErrorClass,
+     pub policy: RecoveryPolicy,
+     pub reason: String,
+@@
+     pub canonical_actions: Vec<RecoveryAction>,
+ }
+
++/// Canonical bridge from repeated failure class to the planner-visible repair
++/// task that must carry the fix.  This is intentionally deterministic: the same
++/// `failure_class` always yields the same `repair_plan_id` and PLAN mutation
++/// template.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct CanonicalRepairBinding {
++    pub failure_class: String,
++    pub recovery_policy: String,
++    pub repair_plan_id: String,
++    pub plan_mutation_template: String,
++    pub persisted_policy: String,
++    pub verify_policy: String,
++}
++
+ #[derive(Debug, Clone)]
+ pub struct RecoveryConfig {
+     pub thresholds: Vec<RecoveryThreshold>,
+ }
+@@
+ pub fn reason_mentions_error_class(lowercase_reason: &str, class: &ErrorClass) -> bool {
+     let key = class.as_key();
+     lowercase_reason.contains(key) || lowercase_reason.contains(&key.replace('_', " "))
+ }
+
++pub fn error_class_from_key(key: &str) -> Option<ErrorClass> {
++    ErrorClass::ALL
++        .iter()
++        .find(|class| class.as_key() == key)
++        .cloned()
++}
++
++pub fn canonical_repair_binding_for_class(class: &ErrorClass) -> CanonicalRepairBinding {
++    canonical_repair_binding_for_key(class.as_key())
++}
++
++pub fn canonical_repair_binding_for_key(class_key: &str) -> CanonicalRepairBinding {
++    let config = RecoveryConfig::default();
++    let recovery_policy = error_class_from_key(class_key)
++        .and_then(|class| {
++            config
++                .threshold_for_class(&class)
++                .map(|threshold| threshold.policy.as_key().to_string())
++        })
++        .unwrap_or_else(|| "escalate_diagnostics".to_string());
++    let repair_plan_id = format!("blocker_class:{class_key}");
++    let title = format!("Canonical recovery policy for {class_key}");
++    let description = format!(
++        "Implement default behavior for failure_class `{class_key}`: map it to \
++        recovery_policy `{recovery_policy}`, bind future work to repair_plan_id \
++        `{repair_plan_id}`, and persist invariant/policy evidence before closure."
++    );
++    let plan_mutation_template = format!(
++        "plan(op=create_task|update_task, repair_plan_id=\"{repair_plan_id}\", \
++        status=\"ready\", title=\"{title}\", description=\"{description}\")"
++    );
++    let persisted_policy = format!(
++        "default_behavior: failure_class={class_key} recovery_policy={recovery_policy} \
++        repair_plan_id={repair_plan_id}; close only after recovery.rs/invariant_discovery.rs \
++        or explicit invariant collapse preserves this behavior"
++    );
++    let verify_policy = format!(
++        "same_failure_reuse: every open PLAN task for failure_class={class_key} must \
++        use repair_plan_id={repair_plan_id}; eval must emit PlanVerifyRecorded for \
++        that id before closure"
++    );
++    CanonicalRepairBinding {
++        failure_class: class_key.to_string(),
++        recovery_policy,
++        repair_plan_id,
++        plan_mutation_template,
++        persisted_policy,
++        verify_policy,
++    }
++}
++
+ pub fn canonical_actions_for_policy(policy: &RecoveryPolicy) -> Vec<RecoveryAction> {
+     match policy {
+         RecoveryPolicy::ClearExecutorAndWakePlanner => vec![
+             RecoveryAction::RecordTriggeredEffect,
+@@
+     fn projection_refresh_stall_selects_bounded_projection_refresh() {
+         let reason = "refresh pid is still running and latest.json remains stale";
+         let decision = decision_for_route_gate_block(reason, 1).expect("decision");
+@@
+             .contains(&RecoveryAction::RetryRole));
+     }
+
++    #[test]
++    fn canonical_repair_binding_is_stable_by_failure_class() {
++        let a = canonical_repair_binding_for_class(&ErrorClass::LlmTimeout);
++        let b = canonical_repair_binding_for_key("llm_timeout");
++
++        assert_eq!(a, b);
++        assert_eq!(a.repair_plan_id, "blocker_class:llm_timeout");
++        assert_eq!(a.recovery_policy, "retire_transport_and_retry");
++        assert!(a
++            .plan_mutation_template
++            .contains("repair_plan_id=\"blocker_class:llm_timeout\""));
++        assert!(a.persisted_policy.contains("default_behavior"));
++        assert!(a.verify_policy.contains("same_failure_reuse"));
++    }
++
+     #[test]
+     fn repeated_runtime_classes_have_default_policies() {
+         let config = RecoveryConfig::default();
+*** Update File: src/events.rs
+@@
+     RecoveryTriggered {
+         generated_at_ms: u64,
+         class: String,
+         policy: String,
+         reason: String,
+         support_count: usize,
+         threshold: usize,
+         window_ms: u64,
+     },
++    CanonicalRepairPolicyRecorded {
++        generated_at_ms: u64,
++        class: String,
++        policy: String,
++        repair_plan_id: String,
++        plan_mutation_template: String,
++        persisted_policy: String,
++        verify_policy: String,
++    },
+     ProjectionRefreshRecoveryRequested {
+         generated_at_ms: u64,
+         class: String,
+         policy: String,
+*** Update File: src/app/app_planner_executor.rs
+@@
+ fn record_recovery_triggered(
+     writer: &mut CanonicalWriter,
+     decision: &crate::recovery::RecoveryDecision,
+ ) {
++    let generated_at_ms = crate::logging::now_ms();
+     writer.record_effect(crate::events::EffectEvent::RecoveryTriggered {
+-        generated_at_ms: crate::logging::now_ms(),
++        generated_at_ms,
+         class: decision.class.as_key().to_string(),
+         policy: decision.policy.as_key().to_string(),
+         reason: decision.reason.clone(),
+         support_count: decision.support_count,
+         threshold: decision.threshold,
+         window_ms: decision.window_ms,
+     });
++    let binding = crate::recovery::canonical_repair_binding_for_class(&decision.class);
++    writer.record_effect(crate::events::EffectEvent::CanonicalRepairPolicyRecorded {
++        generated_at_ms,
++        class: binding.failure_class,
++        policy: binding.recovery_policy,
++        repair_plan_id: binding.repair_plan_id,
++        plan_mutation_template: binding.plan_mutation_template,
++        persisted_policy: binding.persisted_policy,
++        verify_policy: binding.verify_policy,
++    });
+ }
+*** Update File: src/repair_plans.rs
+@@
+     pub trigger: String,
+     pub policy: &'static str,
+     pub action: String,
++    /// Deterministic PLAN mutation the planner must apply for this plan.
++    pub plan_mutation_template: String,
++    /// Policy/persistence condition that prevents local-only fixes.
++    pub persisted_policy: String,
+     pub verify: String,
+     /// Machine-checkable form of `verify` — evaluated by eval_driver each cycle.
+     pub machine_verify: VerifySpec,
+@@
+         policy: {policy}\n\
+         action: {action}\n\
++        plan_mutation_template: {plan_mutation_template}\n\
++        persisted_policy: {persisted_policy}\n\
+         verify: {verify}\n\
+         machine_verify: {machine_verify}\n\
+         owner: {owner}\n\
+@@
+         trigger = plan.trigger,
+         policy = plan.policy,
+         action = plan.action,
++        plan_mutation_template = plan.plan_mutation_template,
++        persisted_policy = plan.persisted_policy,
+         verify = plan.verify,
+         machine_verify = plan.machine_verify.description(),
+         owner = plan.owner,
+@@
+                 action: format!(
+                     "evaluate predicate validity; then: invariants(op=enforce, id={id}) if \
+                     valid, invariants(op=collapse, id={id}) if root cause is gone",
+                     id = inv.id,
+                 ),
++                plan_mutation_template: format!(
++                    "plan(op=create_task|update_task, repair_plan_id=\"invariant:{id}\", \
++                    status=\"ready\", title=\"Resolve invariant {id}\", \
++                    description=\"Enforce or collapse invariant {id} with evidence\")",
++                    id = inv.id,
++                ),
++                persisted_policy: format!(
++                    "default_behavior: invariant:{id} remains active until machine_verify \
++                    passes; persist by enforcing or collapsing the invariant",
++                    id = inv.id,
++                ),
+                 verify: format!(
+                     "{id} status=enforced OR status=collapsed in enforced_invariants.json",
+                     id = inv.id,
+@@
+         .filter(|(key, _)| !invariant_lower.contains(key.as_str()))
+         .map(|(key, count)| {
+             let class_key = key.clone();
++            let binding = crate::recovery::canonical_repair_binding_for_key(key);
+             RepairPlan {
+                 kind: "blocker_class",
+-                id: format!("blocker_class:{key}"),
++                id: binding.repair_plan_id.clone(),
+                 goal: format!(
+                     "'{key}' error class covered by an enforced invariant so future \
+                     occurrences are gated and tracked"
+@@
+                 ),
+                 policy: "synthesize_blocker_invariant",
+                 action: format!(
+-                    "patch src/invariant_discovery.rs — add detection rule for '{key}' \
+-                    emitting a typed invariant when support_count >= 3"
++                    "apply canonical mutation first: {template}; then patch \
++                    src/invariant_discovery.rs — add detection rule for '{key}' \
++                    emitting a typed invariant when support_count >= 3",
++                    template = binding.plan_mutation_template,
+                 ),
++                plan_mutation_template: binding.plan_mutation_template,
++                persisted_policy: binding.persisted_policy,
+                 verify: format!(
+                     "enforced_invariants.json contains '{key}' state_condition AND \
+                     blocker_class_coverage improves on next eval"
+@@
+             if status != "pass" {
+                 plans.push(RepairPlan {
+                     kind: "eval_metric",
+                     id: concat!("eval_metric:", $metric).to_string(),
+@@
+                     trigger: $trigger,
+                     policy: $policy,
+                     action: $action,
++                    plan_mutation_template: format!(
++                        "plan(op=create_task|update_task, repair_plan_id=\"{}\", \
++                        status=\"ready\", title=\"Improve eval metric {}\", \
++                        description=\"Execute the rendered REPAIR_PLAN action and keep \
++                        this repair_plan_id bound until machine_verify passes\")",
++                        concat!("eval_metric:", $metric),
++                        $metric,
++                    ),
++                    persisted_policy: format!(
++                        "default_behavior: eval_metric:{} remains active until \
++                        machine_verify passes; PLAN task must keep repair_plan_id={}",
++                        $metric,
++                        concat!("eval_metric:", $metric),
++                    ),
+                     verify: $verify,
+                     machine_verify: $machine_verify,
+                     owner: $owner,
+@@
+         assert_eq!(plans.len(), 1);
+         assert_eq!(plans[0].id, "blocker_class:llm_timeout");
++        assert!(plans[0]
++            .plan_mutation_template
++            .contains("repair_plan_id=\"blocker_class:llm_timeout\""));
++        assert!(plans[0]
++            .persisted_policy
++            .contains("recovery_policy=retire_transport_and_retry"));
+         assert!(matches!(&plans[0].machine_verify,
+             VerifySpec::FieldNotEquals { key: "blocker_top_uncovered", value }
+                 if value == "llm_timeout"));
+@@
+         for f in &[
+             "REPAIR_PLAN", "kind:", "id:", "goal:", "trigger:", "policy:",
+-            "action:", "verify:", "machine_verify:", "owner:", "evidence:",
++            "action:", "plan_mutation_template:", "persisted_policy:",
++            "verify:", "machine_verify:", "owner:", "evidence:",
+         ] {
+             assert!(r.contains(f), "missing: {f}\n{r}");
+         }
+*** Update File: src/plan_preflight.rs
+@@
+-/// "Open" means status ∈ {ready, in_progress, needs_planning}.
+-/// Matching is by task.repair_plan_id == plan.id (exact) OR by the plan's
+-/// metric/class name appearing in task.title or task.description (heuristic
+-/// fallback for tasks created before this field was added).
++/// "Open" means status ∈ {ready, in_progress, needs_planning}.
++/// Matching is by task.repair_plan_id == plan.id (exact).  Legacy heuristic
++/// title/description matching is still accepted for eval_metric/invariant plans,
++/// but blocker_class recovery plans are strict because same failure must map to
++/// the same persisted plan mutation.
+@@
+-    // Collect open task text for heuristic matching.
+-    let open_task_texts: Vec<String> = tasks
++    // Collect open task bindings and text for matching.
++    let open_task_records: Vec<(String, String)> = tasks
+         .iter()
+         .filter(|t| {
+             t.get("status")
+                 .and_then(|v| v.as_str())
+@@
+             let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("");
+             let desc = t.get("description").and_then(|v| v.as_str()).unwrap_or("");
+-            format!("{plan_id} {title} {desc}")
++            (plan_id.to_string(), format!("{plan_id} {title} {desc}"))
+         })
+         .collect();
+@@
+-            let has_open_task = open_task_texts.iter().any(|text| {
+-                text.contains(&plan.id) || text.contains(name)
++            let has_exact_task = open_task_records
++                .iter()
++                .any(|(repair_plan_id, _)| repair_plan_id == &plan.id);
++            let has_legacy_task = plan.kind != "blocker_class" && open_task_records.iter().any(|(_, text)| {
++                text.contains(&plan.id) || text.contains(name)
+             });
++            let has_open_task = has_exact_task || has_legacy_task;
+             !has_open_task
+         })
+*** End Patch

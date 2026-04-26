@@ -1181,14 +1181,25 @@ fn record_recovery_triggered(
     writer: &mut CanonicalWriter,
     decision: &crate::recovery::RecoveryDecision,
 ) {
+    let generated_at_ms = crate::logging::now_ms();
     writer.record_effect(crate::events::EffectEvent::RecoveryTriggered {
-        generated_at_ms: crate::logging::now_ms(),
+        generated_at_ms,
         class: decision.class.as_key().to_string(),
         policy: decision.policy.as_key().to_string(),
         reason: decision.reason.clone(),
         support_count: decision.support_count,
         threshold: decision.threshold,
         window_ms: decision.window_ms,
+    });
+    let binding = crate::recovery::canonical_repair_binding_for_class(&decision.class);
+    writer.record_effect(crate::events::EffectEvent::CanonicalRepairPolicyRecorded {
+        generated_at_ms,
+        class: binding.failure_class,
+        policy: binding.recovery_policy,
+        repair_plan_id: binding.repair_plan_id,
+        plan_mutation_template: binding.plan_mutation_template,
+        persisted_policy: binding.persisted_policy,
+        verify_policy: binding.verify_policy,
     });
 }
 

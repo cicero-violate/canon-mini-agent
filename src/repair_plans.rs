@@ -113,6 +113,10 @@ pub struct RepairPlan {
     pub trigger: String,
     pub policy: &'static str,
     pub action: String,
+    /// Deterministic PLAN mutation the planner must apply for this plan.
+    pub plan_mutation_template: String,
+    /// Policy/persistence condition that prevents local-only fixes.
+    pub persisted_policy: String,
     pub verify: String,
     /// Machine-checkable form of `verify` — evaluated by eval_driver each cycle.
     pub machine_verify: VerifySpec,
@@ -135,6 +139,8 @@ pub fn render_plan(plan: &RepairPlan) -> String {
         trigger: {trigger}\n\
         policy: {policy}\n\
         action: {action}\n\
+        plan_mutation_template: {plan_mutation_template}\n\
+        persisted_policy: {persisted_policy}\n\
         verify: {verify}\n\
         machine_verify: {machine_verify}\n\
         owner: {owner}\n\
@@ -145,6 +151,8 @@ pub fn render_plan(plan: &RepairPlan) -> String {
         trigger = plan.trigger,
         policy = plan.policy,
         action = plan.action,
+        plan_mutation_template = plan.plan_mutation_template,
+        persisted_policy = plan.persisted_policy,
         verify = plan.verify,
         machine_verify = plan.machine_verify.description(),
         owner = plan.owner,
@@ -240,6 +248,17 @@ pub fn build_invariant_plans(invariant_text: &str, max: usize) -> Vec<RepairPlan
                     valid, invariants(op=collapse, id={id}) if root cause is gone",
                     id = inv.id,
                 ),
+                plan_mutation_template: format!(
+                    "plan(op=create_task|update_task, repair_plan_id=\"invariant:{id}\", \
+                    status=\"ready\", title=\"Resolve invariant {id}\", \
+                    description=\"Enforce or collapse invariant {id} with evidence\")",
+                    id = inv.id,
+                ),
+                persisted_policy: format!(
+                    "default_behavior: invariant:{id} remains active until machine_verify \
+                    passes; persist by enforcing or collapsing the invariant",
+                    id = inv.id,
+                ),
                 verify: format!(
                     "{id} status=enforced OR status=collapsed in enforced_invariants.json",
                     id = inv.id,
@@ -294,9 +313,10 @@ pub fn build_blocker_class_plans(
         .filter(|(key, _)| !invariant_lower.contains(key.as_str()))
         .map(|(key, count)| {
             let class_key = key.clone();
+            let binding = crate::recovery::canonical_repair_binding_for_key(key);
             RepairPlan {
                 kind: "blocker_class",
-                id: format!("blocker_class:{key}"),
+                id: binding.repair_plan_id.clone(),
                 goal: format!(
                     "'{key}' error class covered by an enforced invariant so future \
                     occurrences are gated and tracked"
@@ -306,9 +326,13 @@ pub fn build_blocker_class_plans(
                 ),
                 policy: "synthesize_blocker_invariant",
                 action: format!(
-                    "patch src/invariant_discovery.rs — add detection rule for '{key}' \
-                    emitting a typed invariant when support_count >= 3"
+                    "apply canonical mutation first: {template}; then patch \
+                    src/invariant_discovery.rs — add detection rule for '{key}' \
+                    emitting a typed invariant when support_count >= 3",
+                    template = binding.plan_mutation_template,
                 ),
+                plan_mutation_template: binding.plan_mutation_template,
+                persisted_policy: binding.persisted_policy,
                 verify: format!(
                     "enforced_invariants.json contains '{key}' state_condition AND \
                     blocker_class_coverage improves on next eval"
@@ -393,6 +417,20 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
                     trigger: $trigger,
                     policy: $policy,
                     action: $action,
+                    plan_mutation_template: format!(
+                        "plan(op=create_task|update_task, repair_plan_id=\"{}\", \
+                        status=\"ready\", title=\"Improve eval metric {}\", \
+                        description=\"Execute the rendered REPAIR_PLAN action and keep \
+                        this repair_plan_id bound until machine_verify passes\")",
+                        concat!("eval_metric:", $metric),
+                        $metric,
+                    ),
+                    persisted_policy: format!(
+                        "default_behavior: eval_metric:{} remains active until \
+                        machine_verify passes; PLAN task must keep repair_plan_id={}",
+                        $metric,
+                        concat!("eval_metric:", $metric),
+                    ),
                     verify: $verify,
                     machine_verify: $machine_verify,
                     owner: $owner,
@@ -1119,6 +1157,12 @@ mod tests {
         let plans = build_blocker_class_plans(blockers, invariants, 10);
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].id, "blocker_class:llm_timeout");
+        assert!(plans[0]
+            .plan_mutation_template
+            .contains("repair_plan_id=\"blocker_class:llm_timeout\""));
+        assert!(plans[0]
+            .persisted_policy
+            .contains("recovery_policy=retire_transport_and_retry"));
         assert!(matches!(&plans[0].machine_verify,
             VerifySpec::FieldNotEquals { key: "blocker_top_uncovered", value }
                 if value == "llm_timeout"));
@@ -1131,7 +1175,8 @@ mod tests {
         let r = render_plan(&build_eval_metric_plans(&all_weak_eval(), 1)[0]);
         for f in &[
             "REPAIR_PLAN", "kind:", "id:", "goal:", "trigger:", "policy:",
-            "action:", "verify:", "machine_verify:", "owner:", "evidence:",
+            "action:", "plan_mutation_template:", "persisted_policy:",
+            "verify:", "machine_verify:", "owner:", "evidence:",
         ] {
             assert!(r.contains(f), "missing: {f}\n{r}");
         }
