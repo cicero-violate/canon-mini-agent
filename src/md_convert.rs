@@ -106,14 +106,24 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
         section: &mut InvariantSection,
     ) -> bool {
         if title.eq_ignore_ascii_case("math") {
-            push_current_invariant(current_title, current_clauses, current_desc, invariants);
-            *section = InvariantSection::Math;
-            return true;
+            return switch_invariant_section(
+                current_title,
+                current_clauses,
+                current_desc,
+                invariants,
+                section,
+                InvariantSection::Math,
+            );
         }
         if title.starts_with("Additional Exhaustive") {
-            push_current_invariant(current_title, current_clauses, current_desc, invariants);
-            *section = InvariantSection::Body;
-            return true;
+            return switch_invariant_section(
+                current_title,
+                current_clauses,
+                current_desc,
+                invariants,
+                section,
+                InvariantSection::Body,
+            );
         }
         if title.starts_with("Meta-Level")
             || title.starts_with("Insight")
@@ -127,6 +137,19 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
             return true;
         }
         false
+    }
+
+    fn switch_invariant_section(
+        current_title: &mut Option<String>,
+        current_clauses: &mut Vec<String>,
+        current_desc: &mut Vec<String>,
+        invariants: &mut Vec<Invariant>,
+        section: &mut InvariantSection,
+        next_section: InvariantSection,
+    ) -> bool {
+        push_current_invariant(current_title, current_clauses, current_desc, invariants);
+        *section = next_section;
+        true
     }
 
     for raw in text.lines() {

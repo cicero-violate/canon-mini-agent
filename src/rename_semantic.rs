@@ -68,13 +68,13 @@ fn remove_nested_spans(replacements: &mut Vec<SpanReplacement>) {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: rename_span_replacements
 /// Inputs: usize, &mut std::vec::Vec<rename_semantic::SpanReplacement>
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: mutation
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: no_external_effects, deterministic_for_same_inputs, non_overlapping_replacements
+/// Failure: invalid_span_or_conflicting_replacements
 /// Provenance: rustc:facts + rustc:docstring
 fn normalize_replacements(file_len: usize, replacements: &mut Vec<SpanReplacement>) -> Result<()> {
     for r in replacements.iter() {

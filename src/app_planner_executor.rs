@@ -665,13 +665,13 @@ fn route_gate_block_record(reason: &str) -> serde_json::Value {
 }
 
 /// Intent: route_gate
-/// Resource: error
+/// Resource: route_dispatch
 /// Inputs: &mut canonical_writer::CanonicalWriter, &std::path::Path, &str
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: fs_write, logging, state_write
+/// Forbidden: uses_network, spawns_process
+/// Invariants: route_gate_blocks_dispatch_and_marks_planner_pending
+/// Failure: infallible
 /// Provenance: rustc:facts + rustc:docstring
 fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, reason: &str) {
     eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");

@@ -994,14 +994,14 @@ impl EffectDispersionMode {
         }
     }
 
-    /// Intent: canonical_write
-    /// Resource: error
+/// Intent: pure_transform
+    /// Resource: effect_dispersion_mode
     /// Inputs: graph_metrics::EffectDispersionMode
     /// Outputs: &str
-    /// Effects: error
-    /// Forbidden: error
-    /// Invariants: error
-    /// Failure: error
+    /// Effects: none
+    /// Forbidden: fs_write, uses_network, spawns_process
+    /// Invariants: no_external_effects, deterministic_for_same_inputs
+    /// Failure: infallible
     /// Provenance: rustc:facts + rustc:docstring
     fn persist_label(self) -> &'static str {
         match self {

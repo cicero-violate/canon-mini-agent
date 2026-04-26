@@ -574,6 +574,21 @@ impl<'a> LlmResponseContext<'a> {
             role_schema_bytes: role_schema.len(),
             submit_only: self.submit_only,
         });
+        for record in crate::prompts::prompt_truncation_records(prompt) {
+            self.record_effect(crate::events::EffectEvent::PromptTruncationRecorded {
+                role: self.role.to_string(),
+                prompt_kind: self.prompt_kind.to_string(),
+                step,
+                command_id: exchange_id.to_string(),
+                endpoint_id: self.endpoint.id.clone(),
+                heading: record.heading,
+                raw_bytes: record.raw_bytes,
+                kept_bytes: record.kept_bytes,
+                dropped_bytes: record.dropped_bytes,
+                policy: record.policy,
+                body_hash: record.body_hash,
+            });
+        }
     }
 
     /// Intent: transport_effect

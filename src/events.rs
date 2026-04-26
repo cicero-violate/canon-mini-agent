@@ -392,6 +392,19 @@ pub enum EffectEvent {
         role_schema_bytes: usize,
         submit_only: bool,
     },
+    PromptTruncationRecorded {
+        role: String,
+        prompt_kind: String,
+        step: usize,
+        command_id: String,
+        endpoint_id: String,
+        heading: String,
+        raw_bytes: usize,
+        kept_bytes: usize,
+        dropped_bytes: usize,
+        policy: String,
+        body_hash: String,
+    },
     /// Raw LLM response payload with small structured metadata for joins.
     LlmTurnOutput {
         tab_id: Option<u32>,

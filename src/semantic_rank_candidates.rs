@@ -543,23 +543,15 @@ pub fn run_with_options(
         .count();
     let total_pairs: usize = candidates.iter().map(|c| c.pair_count).sum();
 
-    let out = CandidatesOutput {
-        generated_at_ms: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0),
-        schema_version: 1,
-        graph_schema_version: graph.meta.schema_version,
-        summary: Summary {
-            total_redundant_pairs: total_pairs,
-            unique_owner_functions: candidates.len(),
-            safe_merge,
-            investigate,
-            skip,
-            unmatched_owners: unmatched,
-        },
+    let out = build_candidates_output(
+        graph.meta.schema_version,
         candidates,
-    };
+        total_pairs,
+        safe_merge,
+        investigate,
+        skip,
+        unmatched,
+    );
 
     let json = serde_json::to_vec_pretty(&out)?;
     std::fs::write(&out_path, &json)?;
@@ -582,6 +574,34 @@ pub fn run_with_options(
         unmatched_owners: unmatched,
         out_path,
     })
+}
+
+fn build_candidates_output(
+    graph_schema_version: u32,
+    candidates: Vec<Candidate>,
+    total_pairs: usize,
+    safe_merge: usize,
+    investigate: usize,
+    skip: usize,
+    unmatched: usize,
+) -> CandidatesOutput {
+    CandidatesOutput {
+        generated_at_ms: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+        schema_version: 1,
+        graph_schema_version,
+        summary: Summary {
+            total_redundant_pairs: total_pairs,
+            unique_owner_functions: candidates.len(),
+            safe_merge,
+            investigate,
+            skip,
+            unmatched_owners: unmatched,
+        },
+        candidates,
+    }
 }
 
 pub fn run_from_cli_args(

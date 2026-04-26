@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::constants::{
@@ -38,8 +39,216 @@ fn truncate_bytes(s: &str, max_bytes: usize) -> &str {
 /// Invariants: error
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub(crate) struct PromptTruncationRecord {
+    pub heading: String,
+    pub raw_bytes: usize,
+    pub kept_bytes: usize,
+    pub dropped_bytes: usize,
+    pub policy: String,
+    pub body_hash: String,
+}
+
+fn prompt_truncation_marker(item: &PromptBudgetItem<'_>, kept_bytes: usize) -> String {
+    let dropped_bytes = item.raw_bytes.saturating_sub(kept_bytes);
+    let record = PromptTruncationRecord {
+        heading: item.heading.to_string(),
+        raw_bytes: item.raw_bytes,
+        kept_bytes,
+        dropped_bytes,
+        policy: "preserve_failure_lines_head_tail".to_string(),
+        body_hash: crate::logging::stable_hash_hex(item.body),
+    };
+    let meta = serde_json::to_string(&record).unwrap_or_else(|_| {
+        format!(
+            "{{\"heading\":\"{}\",\"raw_bytes\":{},\"kept_bytes\":{},\"dropped_bytes\":{},\"policy\":\"preserve_failure_lines_head_tail\",\"body_hash\":\"{}\"}}",
+            item.heading.replace('"', "'"),
+            item.raw_bytes,
+            kept_bytes,
+            dropped_bytes,
+            crate::logging::stable_hash_hex(item.body)
+        )
+    });
+    format!("\n... [prompt_truncation {meta}]")
+}
+
+fn is_high_signal_prompt_line(line: &str) -> bool {
+    let lowered = line.to_ascii_lowercase();
+    lowered.contains("error:")
+        || lowered.contains("error[")
+        || lowered.contains("failed")
+        || lowered.contains("failures:")
+        || lowered.contains("panicked at")
+        || lowered.contains("thread '")
+        || lowered.contains("invalid context")
+        || lowered.contains("permission denied")
+        || lowered.contains("no such file")
+        || lowered.contains("traceback")
+        || lowered.contains("exception")
+        || lowered.contains("expected")
+        || lowered.contains("actual")
+        || lowered.contains("test result:")
+        || lowered.contains("could not compile")
+}
+
+fn truncate_suffix_bytes(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut start = s.len().saturating_sub(max_bytes);
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    &s[start..]
+}
+
+fn push_budgeted_line(out: &mut String, line: &str, budget: usize) {
+    if budget == 0 || out.len() >= budget {
+        return;
+    }
+    if !out.is_empty() {
+        if out.len() + 1 > budget {
+            return;
+        }
+        out.push('\n');
+    }
+    let remaining = budget.saturating_sub(out.len());
+    out.push_str(truncate_bytes(line, remaining));
+}
+
+fn high_signal_prompt_excerpt(body: &str, budget: usize) -> String {
+    let mut out = String::new();
+    for line in body.lines().filter(|line| is_high_signal_prompt_line(line)).take(12) {
+        let compact = truncate_bytes(line.trim(), 240);
+        push_budgeted_line(&mut out, compact, budget);
+        if out.len() >= budget {
+            break;
+        }
+    }
+    out
+}
+
+fn render_head_tail_excerpt(body: &str, budget: usize) -> String {
+    const MIDDLE_MARKER: &str = "\n\n... [middle omitted]\n\n";
+    if body.len() <= budget {
+        return body.to_string();
+    }
+    if budget <= MIDDLE_MARKER.len() + 8 {
+        return truncate_bytes(body, budget).to_string();
+    }
+    let content_budget = budget - MIDDLE_MARKER.len();
+    let head_budget = content_budget / 2;
+    let tail_budget = content_budget.saturating_sub(head_budget);
+    let mut out = String::new();
+    out.push_str(truncate_bytes(body, head_budget));
+    out.push_str(MIDDLE_MARKER);
+    out.push_str(truncate_suffix_bytes(body, tail_budget));
+    out
+}
+
+fn render_preserved_truncated_body(body: &str, content_budget: usize) -> String {
+    if body.len() <= content_budget {
+        return body.to_string();
+    }
+    if content_budget < 512 {
+        return render_head_tail_excerpt(body, content_budget);
+    }
+
+    const SIGNAL_HEADER: &str = "Preserved high-signal lines:\n";
+    const HEAD_HEADER: &str = "\n\nHead:\n";
+    const TAIL_HEADER: &str = "\n\nTail:\n";
+
+    let signal_budget = (content_budget / 3).min(2048);
+    let signal = high_signal_prompt_excerpt(body, signal_budget);
+    if signal.trim().is_empty() {
+        return render_head_tail_excerpt(body, content_budget);
+    }
+
+    let framing = SIGNAL_HEADER.len() + HEAD_HEADER.len() + TAIL_HEADER.len();
+    if content_budget <= framing + signal.len() + 16 {
+        return render_head_tail_excerpt(body, content_budget);
+    }
+    let remaining = content_budget - framing - signal.len();
+    let head_budget = remaining / 2;
+    let tail_budget = remaining.saturating_sub(head_budget);
+
+    let mut out = String::with_capacity(content_budget);
+    out.push_str(SIGNAL_HEADER);
+    out.push_str(&signal);
+    out.push_str(HEAD_HEADER);
+    out.push_str(truncate_bytes(body, head_budget));
+    out.push_str(TAIL_HEADER);
+    out.push_str(truncate_suffix_bytes(body, tail_budget));
+    debug_assert!(out.len() <= content_budget);
+    out
+}
+
+/// Extract machine-readable prompt truncation receipts embedded by the prompt
+/// renderer. This lets request logging append explicit tlog effects instead of
+/// silently hiding dropped evidence.
+pub(crate) fn prompt_truncation_records(prompt: &str) -> Vec<PromptTruncationRecord> {
+    const PREFIX: &str = "... [prompt_truncation ";
+    let mut records = Vec::new();
+    let mut cursor = prompt;
+
+    while let Some(prefix_idx) = cursor.find(PREFIX) {
+        let after_prefix = &cursor[prefix_idx + PREFIX.len()..];
+        let mut depth = 0usize;
+        let mut in_string = false;
+        let mut escaped = false;
+        let mut json_start = None;
+        let mut json_end = None;
+
+        for (idx, ch) in after_prefix.char_indices() {
+            if json_start.is_none() {
+                if ch == '{' {
+                    json_start = Some(idx);
+                    depth = 1;
+                }
+                continue;
+            }
+
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch == '"' {
+                    in_string = false;
+                }
+                continue;
+            }
+
+            match ch {
+                '"' => in_string = true,
+                '{' => depth = depth.saturating_add(1),
+                '}' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        json_end = Some(idx + ch.len_utf8());
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let (Some(start), Some(end)) = (json_start, json_end) {
+            if let Ok(record) =
+                serde_json::from_str::<PromptTruncationRecord>(&after_prefix[start..end])
+            {
+                records.push(record);
+            }
+            cursor = &after_prefix[end..];
+        } else {
+            break;
+        }
+    }
+
+    records
+}
+
 fn render_budgeted_item_body(item: &PromptBudgetItem<'_>) -> String {
-    const TRUNCATED_MARKER: &str = "\n... [truncated]";
 
     if item.budget == 0 {
         return String::new();
@@ -49,13 +258,20 @@ fn render_budgeted_item_body(item: &PromptBudgetItem<'_>) -> String {
         return item.body.to_string();
     }
 
-    if item.budget <= TRUNCATED_MARKER.len() {
-        return truncate_bytes(TRUNCATED_MARKER, item.budget).to_string();
+    let marker = prompt_truncation_marker(item, item.budget);
+    if item.budget <= marker.len() {
+        return truncate_bytes(&marker, item.budget).to_string();
     }
 
-    let content_budget = item.budget - TRUNCATED_MARKER.len();
-    let mut out = truncate_bytes(item.body, content_budget).to_string();
-    out.push_str(TRUNCATED_MARKER);
+    let content_budget = item.budget - marker.len();
+    let mut out = render_preserved_truncated_body(item.body, content_budget);
+    let mut marker = prompt_truncation_marker(item, out.len());
+    if out.len() + marker.len() > item.budget {
+        let adjusted_budget = item.budget.saturating_sub(marker.len());
+        out = render_preserved_truncated_body(item.body, adjusted_budget);
+        marker = prompt_truncation_marker(item, out.len());
+    }
+    out.push_str(&marker);
     out
 }
 
@@ -2356,5 +2572,58 @@ mod tests {
         assert!(ACTION_EMIT_LINE.contains("Emit batch actions."));
         assert!(ACTION_EMIT_LINE.contains("reveal chain of thought"));
         assert!(!ACTION_EMIT_LINE.contains("exactly one action"));
+    }
+
+    #[test]
+    fn budgeted_prompt_truncation_preserves_failure_lines_and_tail() {
+        let body = format!(
+            "{}\nerror[E0425]: cannot find value `missing_symbol` in this scope\n{}\ntest result: FAILED. 357 passed; 4 failed\nTAIL_SENTINEL",
+            "HEAD\n".repeat(200),
+            "middle noise\n".repeat(800)
+        );
+        let items = [PromptItem {
+            heading: "Cargo output",
+            body: &body,
+            reserve: 1800,
+            cap: 1800,
+            weight: 1,
+            always_include: true,
+        }];
+        let prompt = render_budgeted_prompt("prefix", &items, "suffix");
+
+        assert!(
+            prompt.contains("error[E0425]") && prompt.contains("test result: FAILED"),
+            "truncation must preserve failure evidence"
+        );
+        assert!(
+            prompt.contains("TAIL_SENTINEL"),
+            "truncation must preserve tail context"
+        );
+        assert!(
+            !prompt.contains("... [truncated]"),
+            "legacy silent truncation marker should be replaced"
+        );
+    }
+
+    #[test]
+    fn budgeted_prompt_truncation_emits_machine_readable_record() {
+        let body = "line\n".repeat(1000);
+        let items = [PromptItem {
+            heading: "Large section",
+            body: &body,
+            reserve: 900,
+            cap: 900,
+            weight: 1,
+            always_include: true,
+        }];
+        let prompt = render_budgeted_prompt("prefix", &items, "suffix");
+        let records = prompt_truncation_records(&prompt);
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].heading, "Large section");
+        assert_eq!(records[0].raw_bytes, body.len());
+        assert!(records[0].kept_bytes < records[0].raw_bytes);
+        assert!(records[0].dropped_bytes > 0);
+        assert_eq!(records[0].policy, "preserve_failure_lines_head_tail");
     }
 }

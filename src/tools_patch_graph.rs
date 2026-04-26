@@ -1891,13 +1891,13 @@ fn write_graph_symbol_preview_file(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: graph_report_action_input
 /// Inputs: &str, &std::path::Path, &serde_json::Value
 /// Outputs: std::result::Result<(std::string::String, std::option::Option<std::string::String>, std::path::PathBuf), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: none
+/// Forbidden: fs_write, uses_network, spawns_process
+/// Invariants: no_external_effects, deterministic_for_same_inputs
+/// Failure: missing_crate_field
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_graph_reports_action_input(
     action_kind: &str,
