@@ -9,6 +9,7 @@ pub mod error_class;
 pub mod eval_driver;
 pub mod evaluation;
 pub mod metric_instructions;
+pub mod repair_plans;
 pub mod evolution;
 pub mod graph_metrics;
 pub mod grpo;

@@ -392,10 +392,7 @@ fn append_eval_threshold_warnings(
     if input.semantic_fn_total > 0
         && input.semantic_fn_intent_coverage < EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING
     {
-        warnings.push(format!(
-            "meaningful_intent_coverage={:.4} < {:.4}",
-            input.semantic_fn_intent_coverage, EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING
-        ));
+        append_meaningful_intent_warning(warnings, input.semantic_fn_intent_coverage);
     }
     if input.semantic_fn_total > 0
         && semantic_fn_low_confidence_rate > EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING
@@ -414,6 +411,13 @@ fn append_eval_threshold_warnings(
             diagnostics_repair_pressure
         ));
     }
+}
+
+fn append_meaningful_intent_warning(warnings: &mut Vec<String>, coverage: f64) {
+    warnings.push(format!(
+        "meaningful_intent_coverage={:.4} < {:.4}",
+        coverage, EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING
+    ));
 }
 
 fn append_semantic_contract_warning(warnings: &mut Vec<String>, semantic_contract_score: f64) {
@@ -1241,7 +1245,7 @@ fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
     let text = reason.to_ascii_lowercase();
     match class {
         "missing_target" => text.contains("does not exist") || text.contains("missing_target"),
-        "invalid_route" => text.contains("invalid_route"),
+        "invalid_route" => recovery_reason_mentions_invalid_route(&text),
         "llm_timeout" => text.contains("timeout"),
         "compile_error" => text.contains("cargo") || text.contains("compile"),
         "verification_failed" => text.contains("verification"),
@@ -1252,6 +1256,10 @@ fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
         "reaction_only" => text.contains("reaction_only") || text.contains("prose-only"),
         _ => false,
     }
+}
+
+fn recovery_reason_mentions_invalid_route(text: &str) -> bool {
+    text.contains("invalid_route")
 }
 
 fn recovery_reason_mentions_projection_stall(text: &str) -> bool {

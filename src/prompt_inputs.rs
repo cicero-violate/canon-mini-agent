@@ -574,7 +574,9 @@ recovery_suppressed={recovery_suppressed}\n\
         semantic_fn_low_confidence = semantic.fn_low_confidence,
         semantic_fn_low_confidence_rate = semantic.fn_low_confidence_rate,
     );
-    header.push_str(&crate::metric_instructions::render_weak_blocks(eval, 3));
+    header.push_str(&crate::repair_plans::render_active_plans(
+        &crate::repair_plans::build_all_active_plans(eval, workspace, 3),
+    ));
     header
 }
 
