@@ -665,15 +665,22 @@ fn eval_focus_line(
     if eval_gate == "fail" {
         return eval_gate_fail_focus_line(weakest_name, weakest_val);
     }
-    if weakest_name == "objective_progress" && objectives == "0/0" {
-        return "objective_gap reason=objectives=0/0 means eval has no mission-progress denominator; next=use objectives action to create/update active objectives before projected issue ranking; validation=OBJECTIVES.json objectives>0 and next eval objectives!=0/0".to_string();
-    }
-    if weakest_name == "task_velocity" && tasks == "0/0" {
-        return "plan_gap reason=tasks=0/0 means eval has no executable work denominator; next=use plan action to create ready tasks tied to active objectives; validation=PLAN.json tasks>0 and ready_window nonempty".to_string();
+    if let Some(line) = eval_focus_denominator_gap_line(weakest_name, objectives, tasks) {
+        return line;
     }
     format!(
         "{weakest_name} reason=lowest eval dimension at {weakest_val:.3}; next={directive}; validation=next eval raises {weakest_name} or removes it as weakest"
     )
+}
+
+fn eval_focus_denominator_gap_line(weakest_name: &str, objectives: &str, tasks: &str) -> Option<String> {
+    if weakest_name == "objective_progress" && objectives == "0/0" {
+        return Some("objective_gap reason=objectives=0/0 means eval has no mission-progress denominator; next=use objectives action to create/update active objectives before projected issue ranking; validation=OBJECTIVES.json objectives>0 and next eval objectives!=0/0".to_string());
+    }
+    if weakest_name == "task_velocity" && tasks == "0/0" {
+        return Some("plan_gap reason=tasks=0/0 means eval has no executable work denominator; next=use plan action to create ready tasks tied to active objectives; validation=PLAN.json tasks>0 and ready_window nonempty".to_string());
+    }
+    None
 }
 
 fn eval_gate_fail_focus_line(weakest_name: &str, weakest_val: f64) -> String {

@@ -730,13 +730,17 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         );
     }
 
+    sort_repair_plans_by_priority_and_score(&mut plans);
+    plans.truncate(max);
+    plans
+}
+
+fn sort_repair_plans_by_priority_and_score(plans: &mut [RepairPlan]) {
     plans.sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
             .then_with(|| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
     });
-    plans.truncate(max);
-    plans
 }
 
 // ── snapshot → eval map ───────────────────────────────────────────────────────

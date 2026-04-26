@@ -403,10 +403,14 @@ fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> 
         "build_gate" => Some(ErrorClass::CompileError),
         "solo_completion_gate" | "diagnostics_evidence_gate" => verification_failed_class(),
         "reaction_only" => Some(ErrorClass::ReactionOnly),
-        "executor_submit_timeout" | "submit_ack_timeout" => Some(ErrorClass::LlmTimeout),
+        "executor_submit_timeout" | "submit_ack_timeout" => llm_timeout_class(),
         "repeated_failed_action" | "idle_streak" => Some(ErrorClass::InvalidSchema),
         _ => None,
     }
+}
+
+fn llm_timeout_class() -> Option<ErrorClass> {
+    Some(ErrorClass::LlmTimeout)
 }
 
 fn invalid_route_class() -> Option<ErrorClass> {

@@ -83,6 +83,29 @@ recovery must emit a typed `RecoveryOutcomeRecorded` event after a recovery
 attempt so eval can score `attempted → succeeded|failed` directly before
 falling back to heuristic windows.
 
+#### Plan Verify Escalation (Repair Plan → Blocker Feedback Loop)
+
+When a repair plan's `machine_verify` fails repeatedly, the failure escalates
+into the blocker-class system, feeding back into eval:
+
+```text
+∀plan: count_consecutive_verify_failures(plan.id, T) ≥ 3
+  ⇒ append_blocker(ErrorClass::VerificationFailed)
+  ⇒ blockers.json gains "verification_failed" entry
+  ⇒ compute_blocker_class_coverage detects uncovered class
+  ⇒ blocker_class_coverage score drops → eval pressure
+  ⇒ REPAIR_PLAN(blocker_class_coverage) fires
+  ⇒ planner creates task → executor patches invariant_discovery.rs
+  ⇒ enforced_invariants.json covers "verification_failed"
+  ⇒ blocker_class_coverage recovers
+  ⇒ machine_verify passes → PlanVerifyRecorded(passed=true) → task closed
+```
+
+This closes the full eval feedback loop: a stuck repair plan produces a
+measurable eval regression that drives a concrete fix. Implemented in
+`src/eval_driver.rs` (escalation loop) and `src/repair_plans.rs`
+(`count_consecutive_verify_failures`).
+
 ### 0.5 Objective Evolution
 
 At the end of every orchestration cycle, planner MUST review `agent_state/OBJECTIVES.json` and update it:
@@ -110,16 +133,18 @@ Formal objectives JSON Schema (draft-07, current runtime shape):
           "title": { "type": "string" },
           "status": { "type": "string" },
           "scope": { "type": "string" },
-          "authority_files": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
+          "authority_files": { "type": "array", "items": { "type": "string" } },
           "category": { "type": "string" },
           "level": { "type": "string" },
           "description": { "type": "string" },
           "requirement": { "type": "array" },
           "verification": { "type": "array" },
-          "success_criteria": { "type": "array" }
+          "success_criteria": { "type": "array" },
+          "repair_plan_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Stable repair plan ids (e.g. 'eval_metric:blocker_class_coverage') whose machine_verify must all pass before this objective is done. When all pass, eval_driver emits PlanVerifyRecorded('objective:{id}', passed=true) as a planner hint."
+          }
         }
       }
     },
@@ -135,6 +160,7 @@ Notes:
 - Fields are optional at the schema level to match runtime defaults in `src/objectives.rs`.
 - `status`, `scope`, and `authority_files` are first-class fields; do not embed them only in `description`.
 - `description` may still include a Status/Scope/Authority checklist, but the authoritative values live in the top-level fields.
+- `repair_plan_ids` binds an objective to one or more repair plans by stable id. When all linked plan ids have `PlanVerifyRecorded(passed=true)` in tlog, `eval_driver` emits an objective-verified hint and the planner marks the objective `done`. An objective with an empty `repair_plan_ids` array is managed purely by planner judgment. An objective with `success_criteria: []` and empty `repair_plan_ids` is considered non-functional — the planner must fill in at least one.
 
 This is enforced by planner-cycle prompt rules and objectives action validation. Planner should treat any unreviewed `agent_state/OBJECTIVES.json` state as an immediate process gap.
 
@@ -604,23 +630,49 @@ This eliminates the ambiguity between message-routing state and plan state that 
 
 ### 7.7 Objective → Plan → Task Hierarchy
 
-The system uses a three-level authority chain:
+The system uses a four-level authority chain:
 
 ```
-agent_state/OBJECTIVES.json  (objective_id)
+src/repair_plans.rs  (RepairPlan registry — durable goal/action/verify definitions)
         ↓
-    PLAN.json          (plan tasks — derived from objectives)
+agent_state/OBJECTIVES.json  (objective_id + repair_plan_ids binding)
+        ↓
+    PLAN.json          (plan tasks — derived from objectives and repair plans)
         ↓
   task_id (per task)   (executor work unit — scoped from plan)
 ```
 
 Rules:
-- Every PLAN.json task must trace back to an objective in `agent_state/OBJECTIVES.json` via shared `objective_id`.
+- The repair plan registry (`src/repair_plans.rs`) is the authority for *what needs to be fixed* — goal, action, machine-checkable closure condition. PLAN.json tasks are execution handles, not the durable specification.
+- Every PLAN.json task should trace to either an active `RepairPlan` id or an `objective_id` in `agent_state/OBJECTIVES.json`.
 - Every executor action must carry both `objective_id` and `task_id` as provenance fields.
-- The planner must not create plan tasks unrelated to an active objective without first adding the objective.
+- The planner must not create plan tasks unrelated to an active objective or repair plan without first adding the objective.
 - When the executor starts a cycle it receives a `task_id` from the planner handoff. That `task_id` is the scope boundary for all actions in the cycle.
 
-This chain ensures full traceability: any action can be traced back through task → plan → objective.
+This chain ensures full traceability: any action can be traced back through task → plan → objective → repair plan goal.
+
+### 7.8 Repair Plan → Task Binding Protocol
+
+```text
+T = R_p · V         (task usefulness = repair plan quality × verify determinism)
+O = f(success_criteria, repair_plan_ids)
+System = Σ (RepairPlan → Task → Verify)
+G = max(R_p, T, O, V)
+```
+
+**Active repair plan:** a `RepairPlan` returned by `build_all_active_plans` for the current eval snapshot. Plans are active when their eval metric score is below target, when an invariant is `promoted`, or when a blocker class has no enforced invariant.
+
+**∀plan → ∃task invariant:** every active repair plan must have at least one open task in PLAN.json. Detected by `plan_preflight::plans_without_open_tasks(workspace)`; each gap records a `PlanPreflightFailed` blocker that re-enters the eval feedback loop.
+
+**Stable plan id format:** `"eval_metric:{metric_name}"` | `"invariant:{INV-xxx}"` | `"blocker_class:{error_class_key}"`. Does not encode score values — stable across eval cycles so tasks and objectives can reference them durably.
+
+**Machine-checkable closure:** every `RepairPlan` carries `machine_verify: VerifySpec`. `eval_driver::run()` evaluates it after each eval cycle:
+- `passed=true` → `PlanVerifyRecorded(passed=true)` into tlog → planner reads and closes the task.
+- `passed=false` for ≥ 3 consecutive cycles → `VerificationFailed` blocker appended → escalation loop.
+
+**Objective binding:** an objective's `repair_plan_ids` field lists the plan ids whose `machine_verify` must all pass for the objective to be considered done. When all pass, `eval_driver` emits `PlanVerifyRecorded("objective:{id}", passed=true)` and the planner marks the objective done. Objectives with empty `repair_plan_ids` and empty `success_criteria` are non-functional and must be fixed by the planner.
+
+**Task auto-close:** the planner reads `PlanVerifyRecorded(passed=true)` events from tlog on its next cycle and closes corresponding tasks using the `plan` action. `eval_driver` does not directly mutate `PLAN.json` — task management is planner authority.
 
 ## 8. Non-Goals
 - No network access from agents.
@@ -666,3 +718,127 @@ Changes to `SystemState` fields follow the same rule: additions must use `#[serd
 - Removing or weakening scope guards without explicit planner approval (I13).
 - Emitting `message{status=complete}` when `cargo build --workspace` fails (I11).
 - Writing SPEC.md claims without reading and citing the corresponding source (I12).
+
+## 10. Eval and Judgment System
+
+The eval and judgment system converts raw tlog/artifact state into a scored signal that drives planner decisions and closes repair loops automatically.
+
+### 10.1 Pipeline
+
+```text
+S = project(T)                         tlog → current state snapshot
+E = score(S, I, graph, blockers, objectives, deltas)
+P = plan(E)                            planner creates tasks from REPAIR_PLANs
+X = execute(P)                         executor patches
+V = verify(X)                          cargo check/test
+G_eval = regenerate(latest.json)       canon-generate-issues --complexity-report-only
+V_plan = machine_verify.check(E')      eval_driver checks all active repair plans
+  → passed → PlanVerifyRecorded(passed=true) → planner closes task
+  → failed×3 → VerificationFailed blocker → eval pressure → new REPAIR_PLAN
+T' = append(T, effects(X, V, G_eval, V_plan))
+```
+
+### 10.2 EvaluationVector Dimensions
+
+The composite eval score is the geometric mean of 12 dimensions (all clamped to [0.001, 1.0]):
+
+| Dimension | Target | Source | Weak when |
+| --- | --- | --- | --- |
+| `objective_progress` | 1.0 | `OBJECTIVES.json` | any objective not done |
+| `safety` | 1.0 | `VIOLATIONS.json` + semantic error rate | violations active or `fn_error_rate > 0` |
+| `task_velocity` | 0.85 | `PLAN.json` | < 85% tasks complete |
+| `issue_health` | 0.9 | `ISSUES.json` | repeated open issues |
+| `semantic_contract` | 0.5 | `semantic_manifest_proposals.json` | error rate, low coverage, high low-confidence |
+| `structural_invariant_coverage` | 1.0 | `graph.json` + `enforced_invariants.json` | graph structural risks uncovered |
+| `blocker_class_coverage` | 1.0 | `blockers.json` + `enforced_invariants.json` | error classes with no invariant |
+| `canonical_delta_health` | 0.9 | tlog delta signals | prompt truncations, actionable lag |
+| `improvement_measurement` | 1.0 | tlog improvement attempts | unmeasured apply_patch improvements |
+| `improvement_validation` | 1.0 | tlog | unvalidated improvements (no cargo check) |
+| `improvement_effectiveness` | 0.8 | tlog delta_g | regressed improvement attempts |
+| `recovery_effectiveness` | 1.0 | `RecoveryOutcomeRecorded` events | failed recovery attempts |
+
+Overall score: `base × (1 − 0.25 × diagnostics_repair_pressure) × (1 − enforcement_penalty)`.
+Enforcement penalty: 0.15 per hard gate violation, capped at 0.75.
+
+### 10.3 Blocker Class Coverage
+
+`compute_blocker_class_coverage(blockers, invariant_text)` in `src/evaluation.rs`:
+
+```text
+for each distinct error_class key in blockers.json (excluding Unknown):
+  covered  if  error_class.as_key() appears anywhere in enforced_invariants.json text
+  uncovered otherwise
+
+blocker_class_coverage = covered_classes / distinct_classes  (1.0 if no blockers)
+top_uncovered = highest-count uncovered class key
+```
+
+The `verification_failed` class enters `blockers.json` when a repair plan's `machine_verify` fails ≥ 3 consecutive times. If no invariant covers `"verification_failed"`, `blocker_class_coverage` drops, generating eval pressure to add that invariant. This closes the `stuck repair plan → eval signal → fix` loop.
+
+### 10.4 Repair Plan Registry
+
+`src/repair_plans.rs` contains:
+- `RepairPlan` struct: `kind | id | goal | trigger | policy | action | verify | machine_verify | owner | evidence | priority | score`
+- `VerifySpec` enum: `ScoreAbove | ScoreImproves | FieldNotEquals | InvariantResolved | All(Vec<VerifySpec>)`
+- Three builders: `build_eval_metric_plans`, `build_invariant_plans`, `build_blocker_class_plans`
+- `build_all_active_plans(eval, workspace, max)` — merges all three, sorts by priority then score
+
+Priority tiers (lower = higher urgency):
+- 10: promoted invariants (need enforce/collapse decision now)
+- 20: uncovered blocker classes (executor patches invariant_discovery.rs)
+- 30: blocked eval metric (score < 70% of target)
+- 50: weak eval metric (score 70–100% of target)
+
+Plans are rendered as `REPAIR_PLAN` blocks in the EVAL HEADER. Top 3 active plans surface in each planner prompt cycle.
+
+### 10.5 Eval Enforcement
+
+`EvalEnforcement` in `src/evaluation.rs` records hard violations vs. soft warnings:
+
+Hard violations (fail eval gate, penalize overall score):
+- `semantic_errors > 0` (any function with hard error)
+- `intent_totalization < 100%` (any function without intent class)
+- `actionable_lag > 300 000 ms`
+- `prompt_truncations > 0`
+- `missing_action_results > threshold`
+- `unsafe_checkpoint_attempts > 0`
+- `unmeasured_improvement_attempts > 0`
+- `regressed_improvement_attempts > 0` (when improvement is also unvalidated)
+
+Soft warnings (surfaced in EVAL HEADER, no score penalty):
+- `meaningful_intent_coverage < 0.75`
+- `low_confidence_rate > 0.25`
+- `semantic_contract < 0.50`
+- `diagnostics_repair_pressure > 0`
+
+### 10.6 Prompt Surfaces
+
+The EVAL HEADER (rendered by `build_eval_header` in `src/prompt_inputs.rs`) contains:
+1. `EVAL score=X weakest=dim(val) objectives=N/M tasks=N/M` — overall state
+2. `eval_focus` — directive targeting the weakest dimension
+3. Semantic contract breakdown — fn_error_rate, intent_coverage, low_confidence_rate, totalization
+4. `eval_gate=pass|fail violations=N warnings=N` — enforcement status
+5. `blocker_coverage=X blocker_classes=N top_uncovered=key` — blocker class coverage
+6. Lag/payload/improvement/recovery stats
+7. Up to 3 `REPAIR_PLAN` blocks for the highest-priority active plans
+
+`build_plan_verify_summary` (also in `prompt_inputs.rs`) surfaces:
+- `→ PLAN VERIFIED: {id} — close corresponding task` for recently-passed plans
+- `⚠ PLAN ESCALATED: {id} failed N× — VerificationFailed blocker recorded` for escalated plans
+- `→ OBJECTIVE VERIFIED: {id} — all repair plans passed, mark done` for auto-verified objectives
+- `○ OBJECTIVE {id}: N/M repair plans verified (...)` for partially-verified objectives
+
+### 10.7 Closed Loop Invariant
+
+```text
+G = max(eval_actionability, planner_guidance, recovery_mapping, verification_closure)
+
+∀ weak_metric m:
+  ∃ RepairPlan(id=eval_metric:m, machine_verify=VerifySpec targeting m.target)
+  ∧ ∃ open_task in PLAN.json referencing eval_metric:m
+  ∧ eval_driver evaluates machine_verify after each eval cycle
+  ∧ passed → task_closed ∧ eval score improves
+  ∧ failed×3 → VerificationFailed blocker → blocker_class_coverage pressure → new REPAIR_PLAN
+```
+
+The system is closed when no weak metric lacks a repair plan, no repair plan lacks a task, and no task lacks a machine-checkable closure condition.
