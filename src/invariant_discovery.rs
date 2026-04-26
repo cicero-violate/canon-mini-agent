@@ -2333,19 +2333,26 @@ fn merge_evidence(
 /// Auto-promote invariants whose support_count crosses MIN_INVARIANT_SUPPORT.
 fn promote_by_threshold(file: &mut EnforcedInvariantsFile) {
     for inv in file.invariants.iter_mut() {
-        if inv.status == InvariantStatus::Discovered && inv.support_count >= MIN_INVARIANT_SUPPORT {
+        if should_promote_by_threshold(inv) {
             inv.status = InvariantStatus::Promoted;
-            // Assign default gates based on conditions.
-            if invariant_has_condition(inv, "error_class", "llm_timeout") {
-                inv.gates.clear();
-            } else if inv.gates.is_empty() {
-                inv.gates = default_gates_for_conditions(&inv.state_conditions);
-            }
+            assign_promoted_invariant_gates(inv);
             eprintln!(
                 "[invariants] promoted: {} (support={})",
                 inv.id, inv.support_count
             );
         }
+    }
+}
+
+fn should_promote_by_threshold(inv: &DiscoveredInvariant) -> bool {
+    inv.status == InvariantStatus::Discovered && inv.support_count >= MIN_INVARIANT_SUPPORT
+}
+
+fn assign_promoted_invariant_gates(inv: &mut DiscoveredInvariant) {
+    if invariant_has_condition(inv, "error_class", "llm_timeout") {
+        inv.gates.clear();
+    } else if inv.gates.is_empty() {
+        inv.gates = default_gates_for_conditions(&inv.state_conditions);
     }
 }
 

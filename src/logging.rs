@@ -521,7 +521,7 @@ pub(crate) fn log_message_event(
         event,
         payload,
     ) {
-        eprintln!("[{role}] step={} action_log_error: {err}", step);
+        log_append_failure(role, step, "action_log_error", &err);
     }
 }
 
@@ -574,7 +574,7 @@ pub(crate) fn log_action_event(
     action: &Value,
 ) {
     if let Err(e) = append_action_log(role, endpoint, prompt_kind, step, command_id, action) {
-        eprintln!("[{role}] step={} action_log_error: {e}", step);
+        log_append_failure(role, step, "action_log_error", &e);
     }
 }
 
@@ -668,7 +668,7 @@ pub(crate) fn log_action_result(
         success,
         output,
     ) {
-        eprintln!("[{role}] step={} action_result_log_error: {e}", step);
+        log_append_failure(role, step, "action_result_log_error", &e);
     }
 }
 
@@ -696,8 +696,12 @@ pub fn log_error_event(
         meta,
     );
     if let Err(err) = append_action_log_record(&record) {
-        eprintln!("[{role}] step={} error_log_error: {err}", step.unwrap_or(0));
+        log_append_failure(role, step.unwrap_or(0), "error_log_error", &err);
     }
+}
+
+fn log_append_failure(role: &str, step: usize, label: &str, err: &dyn std::fmt::Display) {
+    eprintln!("[{role}] step={step} {label}: {err}");
 }
 
 /// Intent: event_append

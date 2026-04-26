@@ -89,29 +89,30 @@ Next session must rebuild W, then rebuild A graph artifacts, then remeasure M/E/
 
 ## Completed Evidence Snapshot — 2026-04-26
 
-After the intent-totalization patch and user-confirmed `cargo build && cargo test` pass:
+After the intent-totalization patch, user-confirmed `cargo build && cargo test` pass, and the current regenerated artifacts in `/mnt/data`:
 
 ```text
-G.nodes = 4676
-G.fn_total = 2380
-G.intent_classified = 2380
+G.nodes = 4688
+G.edges = 30902
+G.fn_total = 2392
+G.intent_classified = 2392
 G.intent_missing = 0
 G.intent_coverage = 1.0000
-G.unknown_low_confidence = 1695
-G.with_intent_evidence = 2380
+G.unknown_low_confidence = 1704
+G.with_intent_evidence = 2392
 G.hardish_intent = 0
 ```
 
-Current manifest sidecar still needs regeneration after the source patch:
+Regenerated manifest sidecar evidence:
 
 ```text
-M.fn_total = 2380
-M.fn_with_any_error = 377
-M.fn_error_rate = 0.1584
-M.fn_intent_classified = 1283
-M.fn_low_confidence = 1097
-M.fn_intent_coverage = 0.5391
-M.fn_low_confidence_rate = 0.4609
+M.fn_total = 2392
+M.fn_with_any_error = 0
+M.fn_error_rate = 0.0000
+M.fn_intent_classified = 1286
+M.fn_low_confidence = 1106
+M.fn_intent_coverage = 0.5376
+M.fn_low_confidence_rate = 0.4624
 ```
 
 Completed source-level repair:
@@ -123,7 +124,8 @@ W: explicit hard_error/extractor_error/schema_error/schema_corruption/parse_erro
 A: generated doc error placeholders → repairable fallback
 A: explicit hard doc errors → partial_error
 V: cargo build && cargo test pass in user Rust environment
-R: rubric/PROJECT_RUBRIC_COMPLETION.v3.md and .latest updated
+P: prompt eval header now overlays live semantic manifest metrics over stale complexity report metrics
+R: rubric/PROJECT_RUBRIC_COMPLETION.v4.md and .latest updated
 ```
 
 Interpretation:
@@ -131,7 +133,128 @@ Interpretation:
 ```text
 Source-level intent totalization is complete.
 Graph-level intent totalization is achieved.
-Manifest sidecar burn-down is pending regeneration and remeasurement.
+Manifest sidecar burn-down is achieved for current artifacts.
+Prompt eval visibility patch is user-validated with cargo build && cargo test.
+Remaining work is fresh report/tlog regeneration and low-confidence reduction.
+```
+
+---
+
+## Eval Self-Verification Patch — 2026-04-26
+
+Variables:
+
+```text
+C = semantic counts
+R = reported semantic rates
+E = eval snapshot
+Q = semantic quality
+```
+
+Equation:
+
+```text
+E.semantic_contract =
+  (1 - fn_with_any_error / fn_total)
+  * (fn_intent_classified / fn_total)
+  * (1 - fn_low_confidence / fn_total)
+```
+
+One-line explanation: eval must trust semantic counts, not stale or inflated reported rate fields.
+
+Completed in source:
+
+```text
+src/evaluation.rs:
+- compute_eval derives semantic_fn_error_rate from fn_with_any_error / fn_total
+- compute_eval derives semantic_fn_intent_coverage from fn_intent_classified / fn_total
+- compute_eval derives semantic_fn_low_confidence_rate from fn_low_confidence / fn_total
+- EvaluationWorkspaceSnapshot stores the derived rates
+- safety penalty uses the derived hard-error rate
+- test added: compute_eval_derives_semantic_rates_from_counts_not_reported_values
+```
+
+Effect:
+
+```text
+inflated R cannot hide incomplete C
+stale latest.json cannot hide live manifest metrics
+semantic eval now fails downward when counts are incomplete
+```
+
+Validation closure:
+
+```text
+cargo build && cargo test = pass in user Rust environment
+source-level eval self-verification is validated
+runtime projection still needs fresh semantic_manifest/complexity/eval regeneration
+```
+
+---
+
+## Eval Enforcement Patch — 2026-04-26
+
+Variables:
+
+```text
+K = enforcement thresholds
+V = violations
+W = warnings
+S = eval snapshot
+T = tlog delta signals
+```
+
+Equation:
+
+```text
+S.eval_enforcement.passed = (|V| == 0)
+S.overall_score = base_score * (1 - repair_penalty) * (1 - enforcement_penalty)
+```
+
+One-line explanation: eval now distinguishes soft semantic warnings from hard regression violations and penalizes the overall score when mandatory gates fail.
+
+Completed in source:
+
+```text
+src/evaluation.rs:
+- added EvalEnforcement with pass/fail, violation count, violation list, warning count, warning list
+- added hard gates for semantic_errors, intent_totalization, actionable lag, prompt truncation, unsafe checkpoints, missing action results, unmeasured/unvalidated/regressed improvements
+- added warnings for low meaningful-intent coverage, high low-confidence rate, weak semantic contract, and diagnostics repair pressure
+- added semantic_fn_totalized and semantic_fn_totalization_coverage to EvaluationWorkspaceSnapshot
+- added enforcement penalty to overall_score
+- added tests:
+  - compute_eval_enforces_hard_semantic_and_totalization_thresholds
+  - compute_eval_treats_totalized_low_confidence_as_warning_not_hard_violation
+
+src/events.rs:
+- EvalScoreRecorded now carries semantic totalization and eval_enforcement fields with serde defaults for old tlog compatibility
+
+src/eval_driver.rs:
+- records eval enforcement results into tlog EvalScoreRecorded
+
+src/complexity.rs:
+- writes semantic totalization and eval enforcement fields into latest.json
+
+src/prompt_inputs.rs:
+- prompt header exposes semantic_totalized, eval_gate, violation count, and warning count
+```
+
+Effect:
+
+```text
+semantic hard errors fail eval
+incomplete semantic totalization fails eval
+low-confidence totalized intent warns but does not fail eval
+stalled tlog/action/prompt/improvement regressions become explicit eval violations
+```
+
+Validation closure:
+
+```text
+cargo build && cargo test = pass in user Rust environment after eval enforcement fixes
+prompt truncation now contributes to canonical_delta_health_score
+eval enforcement source and tests compile/pass
+fresh report/tlog projection still needs runtime eval regeneration
 ```
 
 ---
@@ -779,11 +902,17 @@ Start by running rg checks in both repos and Python-parsing graph.json + semanti
 ## Completed In This Session
 
 ```text
-intent_classified_fn / total_fn = 2380 / 2380
+intent_classified_fn / total_fn = 2392 / 2392
+latest user build wrapper output = 2395 / 2395
 unknown_low_confidence is metric-only
 partial_error excludes missing/uncertain intent in source logic
+semantic_manifest_proposals.json fn_error_rate = 0.0000
+prompt eval header overlays live semantic manifest metrics over stale report metrics
+compute_eval derives semantic rates from counts, not stale reported rates
+eval enforcement gates hard regressions into explicit violations
+prompt_truncations now reduce canonical_delta_health_score
 cargo build && cargo test pass in user Rust environment
-rubric v3/latest reflects current evidence
+rubric v7/latest reflects current evidence
 ```
 
 Applied source deltas:
@@ -798,6 +927,27 @@ canon-mini-agent/src/semantic_manifest.rs
 - treats generated doc error placeholders as repairable fallback
 - keeps explicit hard_error/extractor_error/schema_error/schema_corruption/parse_error as partial_error
 - prevents low-confidence intent from inflating fn_with_any_error after regeneration
+
+canon-mini-agent/src/prompt_inputs.rs
+- adds live semantic manifest overlay to EVAL prompt header
+- includes semantic_contract in weakest-dimension selection
+- displays semantic error, intent coverage, and low-confidence rates
+- tests that live semantic_manifest_proposals.json wins over stale complexity latest.json
+
+canon-mini-agent/src/evaluation.rs
+- derives semantic error, intent coverage, and low-confidence rates from counts
+- records EvalEnforcement pass/fail, violations, and warnings
+- penalizes hard gate failures in overall_score
+- includes prompt truncation pressure in canonical_delta_health_score
+
+canon-mini-agent/src/events.rs
+- carries semantic totalization and eval_enforcement fields in EvalScoreRecorded
+
+canon-mini-agent/src/eval_driver.rs
+- records eval enforcement and semantic totalization into tlog eval events
+
+canon-mini-agent/src/complexity.rs
+- exports semantic totalization and eval enforcement fields into complexity latest.json
 ```
 
 Validation closure:
@@ -808,12 +958,23 @@ V_status = pass
 Result = source-level intent totalization complete
 ```
 
-Still pending:
+Current artifact closure:
 
 ```text
-Regenerate semantic_manifest_proposals.json after the source patch.
-Remeasure fn_with_any_error and remaining partial_error categories.
-Confirm eval/report/tlog carries final semantic deltas.
+G.intent_missing = 0
+Latest wrapper build evidence = 2395/2395 function intent_class coverage
+M.fn_with_any_error = 0
+M.fn_error_rate = 0.0000
+Prompt eval header carries live semantic deltas even when latest complexity report is stale.
+Eval now fails hard regressions instead of merely displaying them.
+```
+
+Still pending after build/test validation:
+
+```text
+Regenerate semantic_manifest_proposals.json after latest 2395-fn graph.
+Rerun complexity report/eval so agent_state/reports/complexity/latest.json and tlog carry final semantic_totalized/eval_enforcement values.
+Confirm planner prompt shows eval_gate=pass when violations=0.
 ```
 
 ---
@@ -821,13 +982,14 @@ Confirm eval/report/tlog carries final semantic deltas.
 ## Highest-Leverage Next Action
 
 ```text
-Regenerate graph + semantic_manifest_proposals.json → remeasure fn_error_rate → confirm remaining partial_error entries are only explicit hard failures.
+Regenerate semantic manifest → rerun complexity/eval → confirm latest.json and tlog EvalScoreRecorded carry count-derived semantic rates plus eval_enforcement_* fields.
 ```
 
 If that passes, the next repair is:
 
 ```text
-Wire final semantic intent metrics into eval/tlog/report dashboards if any metric is missing.
+Reduce unknown_low_confidence by enriching docstring/name/effect intent heuristics without reintroducing hard errors for optional uncertainty.
+Then add CI-style eval gate checks so hard eval violations fail local validation before completion.
 ```
 
 New-session handoff:

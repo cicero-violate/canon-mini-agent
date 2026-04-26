@@ -247,6 +247,38 @@ fn enforce_eval_thresholds(
     let mut violations = Vec::new();
     let mut warnings = Vec::new();
 
+    append_eval_threshold_violations(
+        &mut violations,
+        input,
+        semantic_fn_error_rate,
+        semantic_fn_totalized,
+        semantic_fn_totalization_coverage,
+    );
+    append_eval_threshold_warnings(
+        &mut warnings,
+        input,
+        semantic_fn_low_confidence_rate,
+        semantic_contract_score,
+        diagnostics_repair_pressure,
+    );
+
+    EvalEnforcement {
+        passed: violations.is_empty(),
+        violation_count: violations.len(),
+        violations,
+        warning_count: warnings.len(),
+        warnings,
+    }
+}
+
+fn append_eval_threshold_violations(
+    violations: &mut Vec<String>,
+    input: &EvalInput,
+    semantic_fn_error_rate: f64,
+    semantic_fn_totalized: usize,
+    semantic_fn_totalization_coverage: f64,
+) {
+
     if input.semantic_fn_total > 0 && semantic_fn_error_rate > EVAL_MAX_SEMANTIC_ERROR_RATE {
         violations.push(format!(
             "semantic_errors={}/{} rate={:.4} > {:.4}",
@@ -316,7 +348,15 @@ fn enforce_eval_thresholds(
             input.tlog_delta_signals.measured_improvement_attempts
         ));
     }
+}
 
+fn append_eval_threshold_warnings(
+    warnings: &mut Vec<String>,
+    input: &EvalInput,
+    semantic_fn_low_confidence_rate: f64,
+    semantic_contract_score: f64,
+    diagnostics_repair_pressure: f64,
+) {
     if input.semantic_fn_total > 0
         && input.semantic_fn_intent_coverage < EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING
     {
@@ -344,14 +384,6 @@ fn enforce_eval_thresholds(
             "diagnostics_repair_pressure={:.4}",
             diagnostics_repair_pressure
         ));
-    }
-
-    EvalEnforcement {
-        passed: violations.is_empty(),
-        violation_count: violations.len(),
-        violations,
-        warning_count: warnings.len(),
-        warnings,
     }
 }
 

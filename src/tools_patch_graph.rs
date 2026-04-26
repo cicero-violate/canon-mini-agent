@@ -234,11 +234,7 @@ fn format_apply_patch_action_chain(
         format_chained_action_entry(
             2,
             "run_command",
-            if check_label.ends_with("ok") {
-                "ok"
-            } else {
-                "failed"
-            },
+            action_chain_status(check_label),
             "Auto-verify the patched crate compiles after the edit.",
             Some(check_cmd),
             truncate(check_out, MAX_SNIPPET),
@@ -249,11 +245,7 @@ fn format_apply_patch_action_chain(
         sections.push(format_chained_action_entry(
             3,
             "run_command",
-            if test_label.ends_with("ok") {
-                "ok"
-            } else {
-                "failed"
-            },
+            action_chain_status(test_label),
             "Auto-verify the patched crate tests after the edit.",
             Some(test_cmd),
             test_out,
@@ -265,11 +257,7 @@ fn format_apply_patch_action_chain(
         sections.push(format_chained_action_entry(
             refresh_index,
             "run_command",
-            if refresh_label.ends_with("ok") {
-                "ok"
-            } else {
-                "failed"
-            },
+            action_chain_status(refresh_label),
             "Regenerate graph-derived semantic artifacts and issue projections after cargo check.",
             None,
             truncate(refresh_out, MAX_SNIPPET),
@@ -282,6 +270,14 @@ fn format_apply_patch_action_chain(
     }
 
     sections.join("\n\n")
+}
+
+fn action_chain_status(label: &str) -> &'static str {
+    if label.ends_with("ok") {
+        "ok"
+    } else {
+        "failed"
+    }
 }
 
 fn graph_refresh_fingerprint_path(workspace: &Path) -> PathBuf {

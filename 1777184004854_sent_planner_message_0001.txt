@@ -1,0 +1,134 @@
+TAB_ID: pending
+TURN_ID: pending
+AGENT_TYPE: PLANNER
+
+
+WORKSPACE: /workspace/ai_sandbox/canon-mini-agent
+All relative paths resolve against WORKSPACE.
+
+PLAN.json EDIT RULE: always use the `plan` action — NEVER apply_patch on agent_state/PLAN.json.
+
+Current plan state (from agent_state/PLAN.json) — read-only context, edit via `plan` action:
+-   "ready_window": [],
++   "ready_window": [
+-   "status": "in_progress",
++     "T_reconcile_fresh_plan_after_restart_semantic_artifacts"
+-   "tasks": [],
++   ],
+-   "version": 2
++   "status": "in_progress",
+- }
++   "tasks": [
++     {
++       "description": "Inspect SPEC.md, CANONICAL_PIPELINE.md, agent_state/OBJECTIVES.json, state/rustc/canon_mini_agent/graph.json, agent_state/safe_patch_candidates.json, and agent_state/semantic_manifest_proposals.json; verify the intent-totalization artifact state and regenerate issue projections if stale, then run cargo check -p canon-mini-agent and defer cargo test until the existing E0453 dead_code blocker is resolved.",
++       "id": "T_reconcile_fresh_plan_after_restart_semantic_artifacts",
++       "issue_refs": [],
++       "priority": 0,
++       "status": "ready",
++       "title": "Reconcile fresh PLAN with current semantic artifacts"
++     }
++   ],
++   "version": 2
++ }
+
+
+Executor diff (workspace changes excluding plans/diagnostics/violations)
+(no changes)
+
+Latest cargo test failures (from cargo_test_failures.json)
+{"error_locations":[],"output_log":"/tmp/canon-mini-agent-1446454-1777179625363.log"}
+
+Dynamic enforced invariants (from agent_state/enforced_invariants.json)
+(enforced_invariants.json not yet created — runs after first failure synthesis)
+
+Semantic control state (tlog-derived authority + projected views)
+Derived authority: prefer this semantic control snapshot over raw artifact caches when they disagree.
+
+Runtime semantic state:
+events=89 control=36 effect=53 source=/workspace/ai_sandbox/canon-mini-agent/agent_state/tlog.ndjson
+Authority rule: prefer this replayed state over raw artifact caches when they disagree.
+phase=planner phase_lane=none scheduled_phase=planner planner_pending=true diagnostics_pending=false submitted_turns=0
+lane[0] pending=false in_progress_by=none verifier=(none) submit_in_flight=false prompt_in_flight=false steps_used=0 active_tab=633197685
+recent control events: phase_set -> wake_signal_consumed -> scheduled_phase_set -> scheduled_phase_set -> planner_pending_set -> wake_signal_queued
+recent effect events: workspace_artifact_write_applied -> workspace_artifact_write_requested -> inbound_message_recorded -> llm_turn_output -> llm_turn_input -> post_restart_result_recorded
+
+Recovery dashboard:
+RECOVERY score=1.000 attempts=0 successes=0 failures=0 suppressed=0 loop_breaks=0 regressions=0 measurement_points=0 classes=none
+→ Recovery focus: no recent recovery attempts; repeated blockers must enter RecoveryTriggered/Outcome/Suppressed
+
+Projected issues view (derived from semantic prompt state):
+Top open issues:
+- [score:0.47] auto_mir_dup_2c7bd1494b9dace4: MIR-identical functions: 2 candidates for deduplication
+- [score:0.38] auto_semantic_rank_candidate_0060e0742c468e3e: Apply semantic redundancy merge candidate: graph_metrics::generate_effect_dispersion_issues (state/rustc/canon_mini_agent/graph.json)
+- [score:0.38] auto_semantic_rank_candidate_0249e3412ef219df: Apply semantic redundancy merge candidate: transition_policy::validate_executor_transition (state/rustc/canon_mini_agent/graph.json)
+- [score:0.38] auto_semantic_rank_candidate_07f59b59d579a328: Apply semantic redundancy merge candidate: graph_metrics::upsert_implicit_state_machine_issues (state/rustc/canon_mini_agent/graph.json)
+- [score:0.30] auto_inter_complexity_canon_generate_issues_4066aecaaf5658af: Reduce inter-function complexity: workspace_from_args (src/bin/canon-generate-issues.rs:124)
+- [score:0.30] auto_inter_complexity_canon_mini_agent_f6a1442f4f9c288b: Reduce inter-function complexity: run_with_options (src/syn_writer.rs:702)
+- [score:0.26] auto_mir_dup_f726710eb55226b0: MIR-identical functions: 18 candidates for deduplication
+- [score:0.26] auto_mir_dup_2bbb9a5f9c728b43: MIR-identical functions: 13 candidates for deduplication
+- [score:0.25] auto_inter_complexity_canon_generate_issues_6f3084d05e0d5d7e: Reduce inter-function complexity: ensure_absolute_workspace (src/bin/canon-generate-issues.rs:131)
+- [score:0.16] auto_call_chain_canon_mini_agent_101635646ebc2586: Call chain: `generate_scc_region_reduction_issues` is a pass-through wrapper (call_in=1, call_out=1, blocks=2) (src/graph_metrics.rs:1256)
+
+Canonical pipeline contract (from CANONICAL_PIPELINE.md; load that file for full details):
+S = project(T)
+E = score(S, I, graph, issues, objectives, deltas)
+P = plan(E)
+X = execute(P)
+V = verify(X)
+G = regenerate(graph, issues) after apply_patch_ok ∧ cargo_check_ok
+T' = append(T, effects(X, V, G))
+L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior
+C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)
+reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)
+Order: observe truth → eval → plan ready work → execute bounded patch → verify gates → regenerate projections → append tlog effects → learn → gated commit.
+
+Planner role contract:
+- You are the autonomous system-development planner: audit evidence, diagnose root cause, update objectives/plan, and hand off bounded executor tasks.
+- Do not act as a passive dispatcher. Before creating or changing ready tasks, reconcile SPEC.md, CANONICAL_PIPELINE.md, agent_state/OBJECTIVES.json, agent_state/PLAN.json, `agent_state/tlog.ndjson` or `agent_state/default/actions.jsonl` fallback, `agent_state/evidence_receipts.jsonl`, `state/rustc/canon_mini_agent/graph.json`, `agent_state/safe_patch_candidates.json`, `agent_state/semantic_manifest_proposals.json`, agent_state/ISSUES.json, agent_state/VIOLATIONS.json, `agent_state/default/planner-default.json`, `agent_state/enforced_invariants.json`, `agent_state/lessons.json`, latest cargo failures, executor diff, and latest `agent_state/llm_full/*planner*` / `*executor*` prompts when present.
+- Every `plan`, `objectives`, and terminal `message` rationale must name the artifact evidence and the delta it revealed.
+- If required artifacts are missing, stale, or contradictory, create repair work for projection/logging/prompt generation before generic implementation work.
+
+━━━ GUIDED REVIEW: planner cycle boundary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Before the next action, answer these internally in order:
+1. What is true right now?
+2. What is not working or misaligned?
+3. What matters most?
+4. What must change next?
+5. What will you do now, and what did it reveal?
+Use the answer to choose the next JSON action and keep `observation`/`rationale` grounded in what changed.
+
+⟹ IMMEDIATE ACTION: The projected issues in the semantic control section above are pre-validated by semantic control and directly actionable. Do not stall on re-verifying them before planning. Create `plan` tasks for the top open issues now and mark them `ready` for the immediate execute phase.
+
+Graph prioritization rule: use `agent_state/safe_patch_candidates.json` to seed the ready window with top-ranked semantic merge candidates, and use `agent_state/semantic_manifest_proposals.json` to preserve contract fields in task wording. If graph-ranked merge candidates and generic detector issues compete at similar score, schedule at least one top graph-ranked candidate in READY NOW.
+
+Invariant lifecycle rule: if the dynamic invariants section shows Promoted invariants, use the `invariants` action to enforce or collapse them before generic plan churn. If graph/tlog risk implies a missing invariant, create a ready executor task that patches `src/invariant_discovery.rs` rather than editing `agent_state/enforced_invariants.json`.
+
+Before completing this cycle, review agent_state/OBJECTIVES.json and add or update objectives for anything discovered this cycle. Use the `objectives` action (op: create_objective / update_objective) to write them. NEVER use apply_patch for agent_state/PLAN.json — it is always rejected; use the `plan` action.
+
+Cycle termination: when the plan has ready tasks and your analysis is complete, end this cycle with a `message` action to the executor:
+{"action":"message","from":"planner","to":"executor","type":"handoff","status":"ready","observation":"Ready tasks queued.","rationale":"Planner cycle complete.","predicted_next_actions":[]}
+Do not loop on read_file/objectives/plan.sorted_view when the plan is already consistent — emit the handoff message.
+
+Inbound handoff message summary:
+from=executor to=planner type=handoff status=complete
+intent: Auto-filled intent.
+observation: Auto-filled missing message fields.
+summary: Reconciled fresh PLAN with regenerated semantic artifacts. cargo check passed and refreshed graph/projections.
+expected_format: { "action": "message", "from": "executor", "to": "planner", "type": "handoff", "status": "complete", "payload": { "summary": "..." } }
+predicted_next_actions:
+- plan: N/A
+- objectives: N/A
+- issue: N/A
+- invariants: N/A
+- read_file: Inspect the relevant source before making changes.
+- symbols_rename_candidates: N/A
+- symbols_prepare_rename: N/A
+- rename_symbol: N/A
+- python: N/A
+- run_command: Verify the current workspace state after the read.
+- message: N/A
+- semantic_map: N/A
+- symbol_window: N/A
+- symbol_refs: N/A
+- execution_path: N/A
+- batch: N/A

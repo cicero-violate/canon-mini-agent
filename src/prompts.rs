@@ -574,7 +574,7 @@ fn canonical_pipeline_prompt_block() -> String {
 fn prompt_mission(kind: AgentPromptKind) -> &'static str {
     match kind {
         AgentPromptKind::Executor => "All actions (`read_file`, `apply_patch`, `run_command`, `plan`, `message`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nMake source changes, run checks, and report evidence in `message.payload`.",
-        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executable next-step guidance for the same operational loop.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and projects issues, violations, and invariants into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nAct on projected open issues from semantic control and convert the top open items into ready executor tasks.\nWhen the plan has ready tasks and your analysis is complete, terminate this cycle with a `message` action: `{\"action\":\"message\",\"from\":\"planner\",\"to\":\"executor\",\"type\":\"handoff\",\"status\":\"ready\",\"observation\":\"Ready tasks queued.\",\"rationale\":\"Planner cycle complete.\",\"predicted_next_actions\":[]}`.\nDo not use `message` for intermediate progress tracking — only as the terminal handoff signal or a blocker escalation.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
+        AgentPromptKind::Planner => "Your job is to read `SPEC.md`, `agent_state/OBJECTIVES.json`, and the semantic-control snapshot in this prompt, then derive the master plan plus executable next-step guidance for the same operational loop.\nThe semantic-control snapshot is the tlog-derived authority for routing/control and projects issues, violations, invariants, and eval into one view.\nOn every cycle, re-evaluate the workspace and update `PLAN.json` via the `plan` action (emit it as JSON in your response).\nAt the end of every planner cycle, review `agent_state/OBJECTIVES.json` and add or update objectives using the `objectives` action (emit it as JSON in your response).\nPlan from eval first: clear `eval_gate=fail` violations before optional cleanup, otherwise choose ready tasks that improve the weakest eval dimension. Treat projected issue score as a candidate-ranking signal, not the final priority authority.\nEach ready task must name the expected Δeval, the weakest eval dimension it targets, and the validation command/evidence needed to prove improvement.\nWhen the plan has ready tasks and your analysis is complete, terminate this cycle with a `message` action: `{\"action\":\"message\",\"from\":\"planner\",\"to\":\"executor\",\"type\":\"handoff\",\"status\":\"ready\",\"observation\":\"Ready tasks queued.\",\"rationale\":\"Planner cycle complete.\",\"predicted_next_actions\":[]}`.\nDo not use `message` for intermediate progress tracking — only as the terminal handoff signal or a blocker escalation.\nAll actions (`plan`, `objectives`, `issue`, `message`, `read_file`, etc.) are JSON you emit in your response text — they are not function calls or external tools.\nPlans must follow the JSON PLAN/TASK protocol in `SPEC.md`.",
     }
 }
 
@@ -599,7 +599,7 @@ fn prompt_graph_artifact_guidance(kind: AgentPromptKind) -> &'static str {
 - Use the `python` action for structured JSON/NDJSON analysis of `state/rustc/canon_mini_agent/graph.json`, `agent_state/tlog.ndjson`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json`; do not use raw text reads for counts, rankings, event timelines, or schema inspection.\n\
 - Prefer top-ranked entries in `agent_state/safe_patch_candidates.json` when creating ready executor tasks.\n\
 - Use `agent_state/semantic_manifest_proposals.json` to ensure tasks preserve explicit intent/contract metadata.\n\
-- When issue scores are close, favor tasks backed by graph-ranked redundancy evidence over generic heuristics.",
+- Use issue scores only inside the current weakest eval target; when expected Δeval is close, favor tasks backed by graph-ranked redundancy evidence over generic heuristics.",
     }
 }
 
@@ -613,12 +613,13 @@ fn planner_artifact_review_protocol() -> String {
          {SPEC_FILE}, {PIPELINE_FILE}, {OBJECTIVES_FILE}, {MASTER_PLAN_FILE}, \
          `agent_state/tlog.ndjson` or `agent_state/default/actions.jsonl` fallback, \
          `agent_state/evidence_receipts.jsonl`, `state/rustc/canon_mini_agent/graph.json`, \
-         `agent_state/safe_patch_candidates.json`, `agent_state/semantic_manifest_proposals.json`, \
+         `agent_state/reports/complexity/latest.json`, `agent_state/safe_patch_candidates.json`, \
+         `agent_state/semantic_manifest_proposals.json`, \
          {ISSUES_FILE}, {VIOLATIONS_FILE}, `{diagnostics_path}`, \
          `agent_state/enforced_invariants.json`, `agent_state/lessons.json`, latest cargo failures, \
          executor diff, and latest `agent_state/llm_full/*planner*` / `*executor*` prompts when present.\n\
-         - Every `plan`, `objectives`, and terminal `message` rationale must name the artifact evidence \
-         and the delta it revealed.\n\
+         - Every `plan`, `objectives`, and terminal `message` rationale must name the artifact evidence, \
+         the weakest eval dimension or eval_gate violation, and the delta it revealed.\n\
          - If required artifacts are missing, stale, or contradictory, create repair work for \
          projection/logging/prompt generation before generic implementation work."
     )
@@ -633,12 +634,13 @@ const PLANNER_PROCESS: &str = "━━━ PLANNING PROCESS ━━━━━━━�
 ⚠ PLAN.json EDIT RULE: use ONLY the `plan` action for all PLAN.json changes. \
 Planner role cannot use apply_patch.\n\n\
 On every planning cycle:\n\
-1. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor. Mark tasks `ready` (not `todo`) to make them executable — the executor only picks up `ready` tasks.\n\
-2. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor.\n\
-3. Move blocked work behind its dependencies instead of leaving it in the ready window.\n\
-4. Rewrite priorities whenever new evidence changes the critical path.\n\
-5. Write detailed, imperative tasks that include file paths and concrete actions (read/patch/test).\n\
-6. Keep the ready window executable immediately by the next execute phase in this same runtime loop.\n\n\
+1. Reconcile terminal executor handoff first: if the current ready task is complete, mark it `done` before creating new work.\n\
+2. Read the current eval header/vector from semantic control. If `eval_gate=fail`, ready work must clear the listed violation before lower-risk cleanup.\n\
+3. Otherwise, choose ready work by expected improvement to the weakest eval dimension; issue score only breaks ties inside that eval target.\n\
+4. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor. Mark tasks `ready` (not `todo`) to make them executable — the executor only picks up `ready` tasks.\n\
+5. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor, and move blocked work behind dependencies.\n\
+6. Write detailed, imperative tasks that include file paths, concrete actions (read/patch/test), expected Δeval, and validation evidence.\n\
+7. Keep the ready window executable immediately by the next execute phase in this same runtime loop.\n\n\
 Provenance fields — include on every new task:\n\
 - `issue_refs`: array of ISSUES.json ids that motivated this task (e.g. [\"auto_mir_dup_abc123\"]). Empty array if none.\n\
 - `objective_id`: the agent_state/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.";
@@ -775,14 +777,17 @@ pub(crate) fn planner_cycle_prompt(
          {pipeline_contract}\n\n\
          {artifact_review}\n\n\
          {guided_review}\n\n\
-         ⟹ IMMEDIATE ACTION: The projected issues in the semantic control section above are \
-         pre-validated by semantic control and directly actionable. Do not stall on re-verifying \
-         them before planning. Create `plan` tasks for the top open issues now and \
-         mark them `ready` for the immediate execute phase.\n\n\
-         Graph prioritization rule: use `agent_state/safe_patch_candidates.json` to seed the \
-         ready window with top-ranked semantic merge candidates, and use \
+         ⟹ IMMEDIATE ACTION: Reconcile the inbound executor handoff against the current \
+         ready window first. Then plan from eval pressure: if the semantic control eval header \
+         shows `eval_gate=fail`, create ready work that clears the violation. Otherwise, choose \
+         projected issues only when they improve the weakest eval dimension, and include expected \
+         Δeval plus validation evidence in each ready task. issue score is a tie-break signal \
+         inside the eval target, not the priority authority.\n\n\
+         Graph prioritization rule: inside the eval-selected candidate set, use \
+         `agent_state/safe_patch_candidates.json` to seed the ready window with top-ranked \
+         semantic merge candidates, and use \
          `agent_state/semantic_manifest_proposals.json` to preserve contract fields in task wording. \
-         If graph-ranked merge candidates and generic detector issues compete at similar score, \
+         If graph-ranked merge candidates and generic detector issues compete at similar expected Δeval, \
          schedule at least one top graph-ranked candidate in READY NOW.\n\n\
          Invariant lifecycle rule: if the dynamic invariants section shows Promoted invariants, \
          use the `invariants` action to enforce or collapse them before generic plan churn. \
@@ -902,7 +907,7 @@ pub(crate) fn single_role_planner_prompt(
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
-        "\n\n{pipeline_contract}\n\n{artifact_review}\n\n{guided_review}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nOpen issues in `{issues_file}` are directly actionable when they include current-source evidence — create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
+        "\n\n{pipeline_contract}\n\n{artifact_review}\n\n{guided_review}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nPlan from eval first: clear `eval_gate=fail` violations before optional cleanup, otherwise select issues that improve the weakest eval dimension. Open issues in `{issues_file}` are candidate work only when current-source evidence supports expected Δeval; issue score is a tie-break signal inside the eval target, not the priority authority. Create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: within the eval-selected candidate set, prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nEvery ready task must include expected Δeval, the weakest eval dimension it targets, and the validation command/evidence needed after execution.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
     );
     let items = [
         PromptItem {
@@ -2309,6 +2314,33 @@ mod tests {
     }
 
     #[test]
+    fn planner_prompts_are_eval_driven_before_issue_score_driven() {
+        let system = system_instructions(AgentPromptKind::Planner);
+        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
+        let single = single_role_planner_prompt(
+            "{spec}",
+            "{objectives}",
+            "{lessons}",
+            "{enforced_invariants}",
+            "{semantic_control}",
+            "{cargo_test_failures}",
+        );
+
+        for prompt in [&system, &cycle, &single] {
+            assert!(
+                prompt.contains("eval_gate=fail")
+                    && prompt.contains("weakest eval dimension")
+                    && prompt.contains("expected Δeval"),
+                "planner prompts must prioritize eval gate, weakest eval dimension, and expected delta"
+            );
+            assert!(
+                prompt.contains("issue score") || prompt.contains("issue scores"),
+                "planner prompts must demote issue score to a candidate or tie-break signal"
+            );
+        }
+    }
+
+    #[test]
     fn planner_and_executor_prompts_include_canonical_pipeline_contract() {
         for kind in [AgentPromptKind::Planner, AgentPromptKind::Executor] {
             let prompt = system_instructions(kind);
@@ -2573,7 +2605,7 @@ mod tests {
     #[test]
     fn prompt_contract_constants_are_canonical() {
         assert!(ACTION_EMIT_LINE.contains("Emit batch actions."));
-        assert!(ACTION_EMIT_LINE.contains("reveal chain of thought"));
+        assert!(ACTION_EMIT_LINE.contains("do not reveal private chain of thought"));
         assert!(!ACTION_EMIT_LINE.contains("exactly one action"));
     }
 
