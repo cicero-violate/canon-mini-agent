@@ -397,7 +397,7 @@ fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> 
         "effectful_state_advance" => Some(ErrorClass::EffectfulStateAdvanceWithoutControlEvent),
         "ambiguous_control_event" => Some(ErrorClass::AmbiguousControlEvent),
         "plan_preflight" => Some(ErrorClass::PlanPreflightFailed),
-        "route_dispatch" | "handoff_delivery" => Some(ErrorClass::InvalidRoute),
+        "route_dispatch" | "handoff_delivery" => invalid_route_class(),
         "step_limit" => Some(ErrorClass::StepLimitExceeded),
         "livelock" => Some(ErrorClass::LivelockDetected),
         "build_gate" => Some(ErrorClass::CompileError),
@@ -407,6 +407,10 @@ fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> 
         "repeated_failed_action" | "idle_streak" => Some(ErrorClass::InvalidSchema),
         _ => None,
     }
+}
+
+fn invalid_route_class() -> Option<ErrorClass> {
+    Some(ErrorClass::InvalidRoute)
 }
 
 fn verification_failed_class() -> Option<ErrorClass> {

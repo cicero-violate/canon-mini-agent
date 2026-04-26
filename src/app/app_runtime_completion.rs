@@ -531,6 +531,18 @@ fn executor_blocker_handoff_message_value(observation: &str, rationale: &str, pa
 
 fn executor_blocker_handoff_envelope(observation: &str, rationale: &str, payload: Value) -> Value {
     let (from, to, msg_type, status) = executor_blocker_handoff_route();
+    executor_blocker_handoff_envelope_json(from, to, msg_type, status, observation, rationale, payload)
+}
+
+fn executor_blocker_handoff_envelope_json(
+    from: &str,
+    to: &str,
+    msg_type: &str,
+    status: &str,
+    observation: &str,
+    rationale: &str,
+    payload: Value,
+) -> Value {
     json!({
         "action": "message",
         "from": from,

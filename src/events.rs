@@ -591,6 +591,16 @@ pub enum EffectEvent {
         #[serde(default)]
         blocker_class_coverage: f64,
     },
+    /// Outcome of a `machine_verify` check run after an eval cycle.
+    /// Emitted by `eval_driver` for every active repair plan.
+    PlanVerifyRecorded {
+        /// Stable plan id (e.g. "eval_metric:blocker_class_coverage").
+        plan_id: String,
+        plan_kind: String,
+        passed: bool,
+        /// Human-readable form of the VerifySpec that was evaluated.
+        verify_description: String,
+    },
     /// Last completed action snapshot used to resume after process restarts.
     PostRestartResultRecorded {
         role: String,

@@ -617,8 +617,16 @@ fn eval_header_semantic_summary(
     let metrics = crate::semantic_contract::load_semantic_manifest_metrics(workspace);
     let live = metrics.fn_total > 0;
     let fn_total = semantic_metric_u64(live, metrics.fn_total, get_u64("semantic_fn_total"));
-    let fn_intent_classified = semantic_metric_u64(live, metrics.fn_intent_classified, get_u64("semantic_fn_intent_classified"));
-    let fn_low_confidence = semantic_metric_u64(live, metrics.fn_low_confidence, get_u64("semantic_fn_low_confidence"));
+    let fn_intent_classified = semantic_summary_metric_u64(
+        live,
+        metrics.fn_intent_classified,
+        get_u64("semantic_fn_intent_classified"),
+    );
+    let fn_low_confidence = semantic_summary_metric_u64(
+        live,
+        metrics.fn_low_confidence,
+        get_u64("semantic_fn_low_confidence"),
+    );
     let fn_totalized = fn_intent_classified.saturating_add(fn_low_confidence).min(fn_total);
     EvalHeaderSemanticSummary {
         semantic_contract: if live { metrics.score() } else { get_f64("semantic_contract") },
@@ -632,6 +640,10 @@ fn eval_header_semantic_summary(
         fn_totalized,
         fn_totalization_coverage: ratio(fn_totalized as usize, fn_total as usize),
     }
+}
+
+fn semantic_summary_metric_u64(live: bool, live_value: usize, fallback: u64) -> u64 {
+    semantic_metric_u64(live, live_value, fallback)
 }
 
 fn semantic_metric_u64(live: bool, live_value: usize, fallback: u64) -> u64 {
@@ -648,9 +660,7 @@ fn eval_focus_line(
     directive: &str,
 ) -> String {
     if eval_gate == "fail" {
-        return format!(
-            "gate_fail reason=eval_enforcement violations are active; next=clear violations before issue ranking; validation=eval_gate=pass; weakest={weakest_name}({weakest_val:.3})"
-        );
+        return eval_gate_fail_focus_line(weakest_name, weakest_val);
     }
     if weakest_name == "objective_progress" && objectives == "0/0" {
         return "objective_gap reason=objectives=0/0 means eval has no mission-progress denominator; next=use objectives action to create/update active objectives before projected issue ranking; validation=OBJECTIVES.json objectives>0 and next eval objectives!=0/0".to_string();
@@ -660,6 +670,12 @@ fn eval_focus_line(
     }
     format!(
         "{weakest_name} reason=lowest eval dimension at {weakest_val:.3}; next={directive}; validation=next eval raises {weakest_name} or removes it as weakest"
+    )
+}
+
+fn eval_gate_fail_focus_line(weakest_name: &str, weakest_val: f64) -> String {
+    format!(
+        "gate_fail reason=eval_enforcement violations are active; next=clear violations before issue ranking; validation=eval_gate=pass; weakest={weakest_name}({weakest_val:.3})"
     )
 }
 

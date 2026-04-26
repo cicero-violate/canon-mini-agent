@@ -145,5 +145,23 @@ pub fn run(
         let _ = crate::logging::record_effect_for_workspace(workspace, effect);
     }
 
+    // Run machine_verify checks for all active repair plans and record outcomes.
+    let eval_map = crate::repair_plans::snapshot_to_eval_map(&snapshot);
+    let invariant_text = std::fs::read_to_string(
+        workspace.join("agent_state").join("enforced_invariants.json"),
+    )
+    .unwrap_or_default();
+    let plans = crate::repair_plans::build_all_active_plans(&eval_map, workspace, usize::MAX);
+    for plan in &plans {
+        let passed = plan.machine_verify.check(&eval_map, &invariant_text);
+        let verify_effect = EffectEvent::PlanVerifyRecorded {
+            plan_id: plan.id.clone(),
+            plan_kind: plan.kind.to_string(),
+            passed,
+            verify_description: plan.machine_verify.description(),
+        };
+        let _ = crate::logging::record_effect_for_workspace(workspace, verify_effect);
+    }
+
     Ok((snapshot, delta))
 }

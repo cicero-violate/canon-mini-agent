@@ -477,18 +477,9 @@ pub fn run_with_options(
         c.rank = i + 1;
     }
 
-    let safe_merge = candidates
-        .iter()
-        .filter(|c| c.recommended_action == "safe_merge")
-        .count();
-    let investigate = candidates
-        .iter()
-        .filter(|c| c.recommended_action == "investigate")
-        .count();
-    let skip = candidates
-        .iter()
-        .filter(|c| c.recommended_action == "skip")
-        .count();
+    let safe_merge = count_candidates_by_action(&candidates, "safe_merge");
+    let investigate = count_candidates_by_action(&candidates, "investigate");
+    let skip = count_candidates_by_action(&candidates, "skip");
     let total_pairs: usize = candidates.iter().map(|c| c.pair_count).sum();
 
     let out = build_candidates_output(
@@ -522,6 +513,13 @@ pub fn run_with_options(
         unmatched_owners: unmatched,
         out_path,
     })
+}
+
+fn count_candidates_by_action(candidates: &[Candidate], action: &str) -> usize {
+    candidates
+        .iter()
+        .filter(|c| c.recommended_action == action)
+        .count()
 }
 
 fn summarize_redundant_path_pairs(pairs: &[&RedundantPathPair]) -> Vec<PairSummary> {

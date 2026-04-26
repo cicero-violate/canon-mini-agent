@@ -347,6 +347,90 @@ fn log_preflight_bounces(_workspace: &Path, bounces: &[PreflightBounce]) {
     }
 }
 
+// ── Plan-task gap detection ───────────────────────────────────────────────────
+
+/// Check whether every active repair plan has at least one open task in
+/// PLAN.json.  Returns the ids of plans with no matching open task.
+///
+/// "Open" means status ∈ {ready, in_progress, needs_planning}.
+/// Matching is by task.repair_plan_id == plan.id (exact) OR by the plan's
+/// metric/class name appearing in task.title or task.description (heuristic
+/// fallback for tasks created before this field was added).
+pub fn plans_without_open_tasks(workspace: &Path) -> Vec<String> {
+    let plan_raw =
+        match std::fs::read_to_string(workspace.join(crate::constants::MASTER_PLAN_FILE)) {
+            Ok(s) if !s.trim().is_empty() => s,
+            _ => return Vec::new(),
+        };
+    let plan_value: serde_json::Value = match serde_json::from_str(&plan_raw) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let tasks = match plan_value.get("tasks").and_then(|v| v.as_array()) {
+        Some(t) => t,
+        None => return Vec::new(),
+    };
+
+    let open_statuses = ["ready", "in_progress", "needs_planning"];
+
+    // Collect open task text for heuristic matching.
+    let open_task_texts: Vec<String> = tasks
+        .iter()
+        .filter(|t| {
+            t.get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| open_statuses.iter().any(|os| s.eq_ignore_ascii_case(os)))
+                .unwrap_or(false)
+        })
+        .map(|t| {
+            let plan_id = t
+                .get("repair_plan_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let desc = t.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            format!("{plan_id} {title} {desc}")
+        })
+        .collect();
+
+    // Build active plans from the eval map in latest.json.
+    let latest_path = workspace
+        .join("agent_state")
+        .join("reports")
+        .join("complexity")
+        .join("latest.json");
+    let eval_map = match std::fs::read_to_string(&latest_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| {
+            v.get("eval")
+                .and_then(|e| e.as_object())
+                .map(|m| m.clone())
+        }) {
+        Some(m) => m,
+        None => return Vec::new(),
+    };
+
+    let plans = crate::repair_plans::build_all_active_plans(&eval_map, workspace, usize::MAX);
+
+    plans
+        .iter()
+        .filter(|plan| {
+            // Extract the short metric/class/invariant name from the stable id.
+            let name = plan
+                .id
+                .split(':')
+                .nth(1)
+                .unwrap_or(&plan.id);
+            let has_open_task = open_task_texts.iter().any(|text| {
+                text.contains(&plan.id) || text.contains(name)
+            });
+            !has_open_task
+        })
+        .map(|plan| plan.id.clone())
+        .collect()
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

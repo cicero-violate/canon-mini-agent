@@ -397,10 +397,7 @@ fn append_eval_threshold_warnings(
     if input.semantic_fn_total > 0
         && semantic_fn_low_confidence_rate > EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING
     {
-        warnings.push(format!(
-            "low_confidence_rate={:.4} > {:.4}",
-            semantic_fn_low_confidence_rate, EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING
-        ));
+        append_low_confidence_warning(warnings, semantic_fn_low_confidence_rate);
     }
     if semantic_contract_score < EVAL_MIN_SEMANTIC_CONTRACT_WARNING {
         append_semantic_contract_warning(warnings, semantic_contract_score);
@@ -411,6 +408,13 @@ fn append_eval_threshold_warnings(
             diagnostics_repair_pressure
         ));
     }
+}
+
+fn append_low_confidence_warning(warnings: &mut Vec<String>, rate: f64) {
+    warnings.push(format!(
+        "low_confidence_rate={:.4} > {:.4}",
+        rate, EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING
+    ));
 }
 
 fn append_meaningful_intent_warning(warnings: &mut Vec<String>, coverage: f64) {

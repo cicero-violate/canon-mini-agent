@@ -1,48 +1,126 @@
 /// Repair plan registry — structured, planner-readable action blocks.
 ///
-/// ## Equation
+/// ## Closed loop
 ///
-///   M (weak metric / invariant state / uncovered blocker)
-///   → trigger detected
-///   → RepairPlan { goal, action, verify }
-///   → planner acts on the top-N plans, executor closes each verify
+///   Eval → build_all_active_plans → RepairPlan { machine_verify }
+///   → render into EVAL HEADER (planner reads)
+///   → planner creates task
+///   → executor patches
+///   → eval_driver runs machine_verify.check() after next eval
+///   → passed → PlanVerifyRecorded(passed=true) → task can be closed
+///   → failed → PlanVerifyRecorded(passed=false) → failure count rises
+///   → failure_count >= threshold → escalate
 ///
 /// ## Plan kinds
 ///
 ///   eval_metric   — score below target for a measured eval dimension
 ///   invariant     — promoted invariant waiting for enforce/collapse decision
 ///   blocker_class — recurring error class with no enforced invariant
-///
-/// ## Pipeline
-///
-///   build_all_active_plans(eval, workspace)
-///   → render_active_plans(plans)
-///   → appended to EVAL HEADER in prompt_inputs.rs
-///   → planner reads REPAIR_PLAN blocks and acts
 use std::path::Path;
 
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
+
+// ── VerifySpec ────────────────────────────────────────────────────────────────
+
+/// Machine-checkable closure condition for a repair plan.
+/// Evaluated by `eval_driver` after each eval cycle to determine whether the
+/// plan's work is done.
+#[derive(Debug, Clone)]
+pub enum VerifySpec {
+    /// Score for `metric` in next eval is >= threshold.
+    ScoreAbove { metric: &'static str, threshold: f64 },
+    /// Score for `metric` strictly improved since the plan was created.
+    ScoreImproves { metric: &'static str, from: f64 },
+    /// String field `key` in eval map does not equal `value`.
+    FieldNotEquals { key: &'static str, value: String },
+    /// The named invariant has status=enforced or status=collapsed.
+    InvariantResolved { id: String },
+    /// All sub-specs must pass.
+    All(Vec<VerifySpec>),
+}
+
+impl VerifySpec {
+    /// Evaluate this spec against the current eval JSON map and invariant text.
+    pub fn check(&self, eval: &Map<String, Value>, invariant_text: &str) -> bool {
+        match self {
+            Self::ScoreAbove { metric, threshold } => {
+                eval.get(*metric).and_then(|v| v.as_f64()).unwrap_or(0.0) >= *threshold
+            }
+            Self::ScoreImproves { metric, from } => {
+                eval.get(*metric).and_then(|v| v.as_f64()).unwrap_or(0.0) > *from + 0.001
+            }
+            Self::FieldNotEquals { key, value } => {
+                eval.get(*key).and_then(|v| v.as_str()).unwrap_or("") != value.as_str()
+            }
+            Self::InvariantResolved { id } => invariant_resolved(invariant_text, id),
+            Self::All(specs) => specs.iter().all(|s| s.check(eval, invariant_text)),
+        }
+    }
+
+    /// Human-readable description used in the rendered REPAIR_PLAN block.
+    pub fn description(&self) -> String {
+        match self {
+            Self::ScoreAbove { metric, threshold } => {
+                format!("{metric} >= {threshold:.3}")
+            }
+            Self::ScoreImproves { metric, from } => {
+                format!("{metric} > {from:.3}")
+            }
+            Self::FieldNotEquals { key, value } => {
+                format!("{key} != \"{value}\"")
+            }
+            Self::InvariantResolved { id } => {
+                format!("{id} status in {{enforced, collapsed}}")
+            }
+            Self::All(specs) => specs
+                .iter()
+                .map(|s| s.description())
+                .collect::<Vec<_>>()
+                .join(" AND "),
+        }
+    }
+}
+
+fn invariant_resolved(text: &str, id: &str) -> bool {
+    #[derive(serde::Deserialize)]
+    struct F {
+        #[serde(default)]
+        invariants: Vec<E>,
+    }
+    #[derive(serde::Deserialize)]
+    struct E {
+        id: String,
+        status: String,
+    }
+    let Ok(f) = serde_json::from_str::<F>(text) else {
+        return false;
+    };
+    f.invariants
+        .iter()
+        .filter(|e| e.id == id)
+        .any(|e| e.status == "enforced" || e.status == "collapsed")
+}
 
 // ── Core type ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct RepairPlan {
     pub kind: &'static str,
+    /// Stable identifier across eval cycles.
+    /// Format: "eval_metric:{name}" | "invariant:{INV-xxx}" | "blocker_class:{key}"
     pub id: String,
-    /// What success looks like — static description of the desired end state.
     pub goal: String,
-    /// Why this plan is active right now — derived from live data.
     pub trigger: String,
     pub policy: &'static str,
-    /// Exact next action for the planner or executor.
     pub action: String,
-    /// Observable condition that closes this plan.
     pub verify: String,
+    /// Machine-checkable form of `verify` — evaluated by eval_driver each cycle.
+    pub machine_verify: VerifySpec,
     pub owner: &'static str,
     pub evidence: &'static str,
     /// Lower = higher priority when sorting across plan kinds.
     pub priority: u8,
-    /// Raw score (0.0–1.0) for eval_metric plans; 0.0 for other kinds.
+    /// Raw score for eval_metric plans; 0.0 for other kinds.
     pub score: f64,
 }
 
@@ -58,6 +136,7 @@ pub fn render_plan(plan: &RepairPlan) -> String {
         policy: {policy}\n\
         action: {action}\n\
         verify: {verify}\n\
+        machine_verify: {machine_verify}\n\
         owner: {owner}\n\
         evidence: {evidence}",
         kind = plan.kind,
@@ -67,13 +146,12 @@ pub fn render_plan(plan: &RepairPlan) -> String {
         policy = plan.policy,
         action = plan.action,
         verify = plan.verify,
+        machine_verify = plan.machine_verify.description(),
         owner = plan.owner,
         evidence = plan.evidence,
     )
 }
 
-/// Render a list of plans separated by blank lines.  Returns empty string
-/// when plans is empty so callers can append without extra whitespace.
 pub fn render_active_plans(plans: &[RepairPlan]) -> String {
     if plans.is_empty() {
         return String::new();
@@ -84,8 +162,6 @@ pub fn render_active_plans(plans: &[RepairPlan]) -> String {
 
 // ── Top-level builder ─────────────────────────────────────────────────────────
 
-/// Build all active repair plans from the three registries, merge, sort by
-/// priority, and cap at `max_count`.
 pub fn build_all_active_plans(
     eval: &Map<String, Value>,
     workspace: &Path,
@@ -95,17 +171,15 @@ pub fn build_all_active_plans(
         workspace.join("agent_state").join("enforced_invariants.json"),
     )
     .unwrap_or_default();
-    let blockers_text = std::fs::read_to_string(
-        workspace.join("agent_state").join("blockers.json"),
-    )
-    .unwrap_or_default();
+    let blockers_text =
+        std::fs::read_to_string(workspace.join("agent_state").join("blockers.json"))
+            .unwrap_or_default();
 
     let mut plans: Vec<RepairPlan> = Vec::new();
     plans.extend(build_invariant_plans(&invariant_text, max_count));
     plans.extend(build_blocker_class_plans(&blockers_text, &invariant_text, max_count));
     plans.extend(build_eval_metric_plans(eval, max_count));
 
-    // Sort by priority ascending then score ascending within same priority.
     plans.sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
@@ -116,19 +190,13 @@ pub fn build_all_active_plans(
     plans
 }
 
-// ── Compatibility shim for prompt_inputs ──────────────────────────────────────
-
-/// Render the top-N active repair plans as a block string for the EVAL HEADER.
+// Compatibility shim — used by prompt_inputs.rs.
 pub fn render_weak_blocks(eval: &Map<String, Value>, max_count: usize) -> String {
-    let plans = build_eval_metric_plans(eval, max_count);
-    render_active_plans(&plans)
+    render_active_plans(&build_eval_metric_plans(eval, max_count))
 }
 
 // ── 1. Invariant lifecycle plans ──────────────────────────────────────────────
 
-/// Generate a plan for every invariant in `promoted` status.  Promoted means
-/// the system has synthesized the invariant but the planner has not yet decided
-/// to enforce or collapse it.
 pub fn build_invariant_plans(invariant_text: &str, max: usize) -> Vec<RepairPlan> {
     #[derive(serde::Deserialize)]
     struct InvFile {
@@ -155,28 +223,28 @@ pub fn build_invariant_plans(invariant_text: &str, max: usize) -> Vec<RepairPlan
         .filter(|inv| inv.status == "promoted")
         .map(|inv| {
             let gates = inv.gates.join(", ");
+            let inv_id = inv.id.clone();
             RepairPlan {
                 kind: "invariant",
-                id: inv.id.clone(),
+                id: format!("invariant:{}", inv.id),
                 goal: "invariant lifecycle resolved — predicate enforced or collapsed".to_string(),
                 trigger: format!(
-                    "{id} is promoted (support={support}, gates=[{gates}]): '{predicate}'",
+                    "{id} promoted (support={support}, gates=[{gates}]): '{predicate}'",
                     id = inv.id,
                     support = inv.support_count,
                     predicate = truncate(&inv.predicate_text, 80),
                 ),
                 policy: "invariant_lifecycle",
                 action: format!(
-                    "evaluate whether predicate is still valid, then: \
-                    invariants(op=enforce, id={id}) if valid, \
-                    invariants(op=collapse, id={id}) if root cause is gone",
+                    "evaluate predicate validity; then: invariants(op=enforce, id={id}) if \
+                    valid, invariants(op=collapse, id={id}) if root cause is gone",
                     id = inv.id,
                 ),
                 verify: format!(
-                    "{id} status=enforced OR status=collapsed in enforced_invariants.json \
-                    on next planner cycle",
+                    "{id} status=enforced OR status=collapsed in enforced_invariants.json",
                     id = inv.id,
                 ),
+                machine_verify: VerifySpec::InvariantResolved { id: inv_id },
                 owner: "planner",
                 evidence: "agent_state/enforced_invariants.json",
                 priority: 10,
@@ -192,9 +260,6 @@ pub fn build_invariant_plans(invariant_text: &str, max: usize) -> Vec<RepairPlan
 
 // ── 2. Blocker class plans ────────────────────────────────────────────────────
 
-/// Generate one plan per distinct runtime error class that has no matching
-/// entry in enforced_invariants.json.  More specific than the aggregate
-/// `blocker_class_coverage` eval metric plan.
 pub fn build_blocker_class_plans(
     blockers_text: &str,
     invariant_text: &str,
@@ -214,7 +279,6 @@ pub fn build_blocker_class_plans(
         return Vec::new();
     };
 
-    // Count occurrences per class key (skip unknown).
     let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for b in &file.blockers {
         if b.error_class == "unknown" {
@@ -228,37 +292,49 @@ pub fn build_blocker_class_plans(
     let mut plans: Vec<RepairPlan> = counts
         .iter()
         .filter(|(key, _)| !invariant_lower.contains(key.as_str()))
-        .map(|(key, count)| RepairPlan {
-            kind: "blocker_class",
-            id: key.clone(),
-            goal: format!(
-                "'{key}' error class covered by an enforced invariant \
-                so future occurrences are gated and tracked"
-            ),
-            trigger: format!(
-                "{count} recorded occurrences of '{key}' with no matching invariant in \
-                enforced_invariants.json"
-            ),
-            policy: "synthesize_blocker_invariant",
-            action: format!(
-                "patch src/invariant_discovery.rs — add detection rule for '{key}' \
-                that emits a typed invariant when support_count >= 3"
-            ),
-            verify: format!(
-                "enforced_invariants.json contains a '{key}' state_condition entry \
-                AND blocker_class_coverage increases on next eval"
-            ),
-            owner: "executor",
-            evidence: "agent_state/blockers.json, agent_state/enforced_invariants.json, src/invariant_discovery.rs",
-            priority: 20,
-            score: 0.0,
+        .map(|(key, count)| {
+            let class_key = key.clone();
+            RepairPlan {
+                kind: "blocker_class",
+                id: format!("blocker_class:{key}"),
+                goal: format!(
+                    "'{key}' error class covered by an enforced invariant so future \
+                    occurrences are gated and tracked"
+                ),
+                trigger: format!(
+                    "{count} occurrences of '{key}' with no matching invariant"
+                ),
+                policy: "synthesize_blocker_invariant",
+                action: format!(
+                    "patch src/invariant_discovery.rs — add detection rule for '{key}' \
+                    emitting a typed invariant when support_count >= 3"
+                ),
+                verify: format!(
+                    "enforced_invariants.json contains '{key}' state_condition AND \
+                    blocker_class_coverage improves on next eval"
+                ),
+                machine_verify: VerifySpec::FieldNotEquals {
+                    key: "blocker_top_uncovered",
+                    value: class_key,
+                },
+                owner: "executor",
+                evidence: "agent_state/blockers.json, agent_state/enforced_invariants.json, \
+                    src/invariant_discovery.rs",
+                priority: 20,
+                score: 0.0,
+            }
         })
         .collect();
 
-    // Sort highest-count first (most recurring = most urgent).
     plans.sort_by(|a, b| {
-        let ca = counts.get(&a.id).copied().unwrap_or(0);
-        let cb = counts.get(&b.id).copied().unwrap_or(0);
+        let ca = counts
+            .get(a.id.trim_start_matches("blocker_class:"))
+            .copied()
+            .unwrap_or(0);
+        let cb = counts
+            .get(b.id.trim_start_matches("blocker_class:"))
+            .copied()
+            .unwrap_or(0);
         cb.cmp(&ca).then(a.id.cmp(&b.id))
     });
     plans.truncate(max);
@@ -277,8 +353,6 @@ fn status_label(score: f64, target: f64) -> &'static str {
     }
 }
 
-/// Generate plans for every eval dimension whose score is below target.
-/// Sorted by score ascending (most broken first).
 pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<RepairPlan> {
     let get_f64 = |key: &str| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
     let get_f64_or = |key: &str, d: f64| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(d);
@@ -305,7 +379,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
 
     macro_rules! plan {
         (
-            metric: $metric:expr,
+            metric: $metric:literal,
             target: $target:expr,
             score_key: $score_key:expr,
             score_default: $score_default:expr,
@@ -314,6 +388,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             policy: $policy:expr,
             action: $action:expr,
             verify: $verify:expr,
+            machine_verify: $machine_verify:expr,
             owner: $owner:expr,
             evidence: $evidence:expr,
         ) => {{
@@ -323,12 +398,13 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             if status != "pass" {
                 plans.push(RepairPlan {
                     kind: "eval_metric",
-                    id: format!("{}(score={:.3}/target={:.3})", $metric, score, target),
+                    id: concat!("eval_metric:", $metric).to_string(),
                     goal: $goal,
                     trigger: $trigger,
                     policy: $policy,
                     action: $action,
                     verify: $verify,
+                    machine_verify: $machine_verify,
                     owner: $owner,
                     evidence: $evidence,
                     priority: if status == "blocked" { 30 } else { 50 },
@@ -338,7 +414,6 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         }};
     }
 
-    // ── objective_progress ────────────────────────────────────────────────────
     plan!(
         metric: "objective_progress",
         target: 1.0,
@@ -346,35 +421,36 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         score_default: 0.0,
         goal: "all objectives in OBJECTIVES.json marked done".to_string(),
         trigger: format!(
-            "objective_progress={:.3}; one or more objectives are not complete",
+            "objective_progress={:.3}; one or more objectives not complete",
             get_f64("objective_progress")
         ),
         policy: "close_or_update_objectives",
-        action: "use objectives action (op: update_objective) to mark complete objectives done; create objectives for any untracked active gaps".to_string(),
+        action: "use objectives action (op: update_objective) to close complete objectives; \
+            create objectives for untracked active gaps".to_string(),
         verify: "objective_progress = 1.0 on next eval".to_string(),
+        machine_verify: VerifySpec::ScoreAbove { metric: "objective_progress", threshold: 1.0 },
         owner: "planner",
         evidence: "agent_state/OBJECTIVES.json",
     );
 
-    // ── safety ────────────────────────────────────────────────────────────────
     plan!(
         metric: "safety",
         target: 1.0,
         score_key: "safety",
         score_default: 0.0,
-        goal: "no active invariant violations; semantic error rate = 0".to_string(),
+        goal: "no active violations; semantic_fn_error_rate = 0".to_string(),
         trigger: format!(
-            "safety={:.3}; check VIOLATIONS.json for active entries or non-zero semantic_fn_error_rate",
+            "safety={:.3}; check VIOLATIONS.json or non-zero semantic_fn_error_rate",
             get_f64("safety")
         ),
         policy: "resolve_violations",
-        action: "resolve all active violations in agent_state/VIOLATIONS.json before dispatching any other task".to_string(),
+        action: "resolve all active violations in agent_state/VIOLATIONS.json first".to_string(),
         verify: "safety = 1.0 on next eval".to_string(),
+        machine_verify: VerifySpec::ScoreAbove { metric: "safety", threshold: 1.0 },
         owner: "planner",
         evidence: "agent_state/VIOLATIONS.json",
     );
 
-    // ── task_velocity ─────────────────────────────────────────────────────────
     plan!(
         metric: "task_velocity",
         target: 0.85,
@@ -386,13 +462,14 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             get_f64("task_velocity")
         ),
         policy: "close_stale_tasks",
-        action: "use plan action to mark completed tasks done; close tasks that will not execute this session".to_string(),
+        action: "mark completed tasks done; close tasks that will not execute this session"
+            .to_string(),
         verify: "task_velocity >= 0.85 on next eval".to_string(),
+        machine_verify: VerifySpec::ScoreAbove { metric: "task_velocity", threshold: 0.85 },
         owner: "planner",
         evidence: "agent_state/PLAN.json",
     );
 
-    // ── issue_health ──────────────────────────────────────────────────────────
     plan!(
         metric: "issue_health",
         target: 0.9,
@@ -400,19 +477,19 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         score_default: 0.0,
         goal: "repeated open issues resolved or closed".to_string(),
         trigger: format!(
-            "issue_health={:.3}; open issues with repeated occurrences",
+            "issue_health={:.3}; repeated open issues without resolution",
             get_f64("issue_health")
         ),
         policy: "fix_or_close_repeated_issues",
-        action: "fix or close the top repeated open issues in agent_state/ISSUES.json by score descending".to_string(),
+        action: "fix or close top repeated open issues in ISSUES.json by score descending"
+            .to_string(),
         verify: "issue_health >= 0.9 on next eval".to_string(),
+        machine_verify: VerifySpec::ScoreAbove { metric: "issue_health", threshold: 0.9 },
         owner: "executor",
         evidence: "agent_state/ISSUES.json",
     );
 
-    // ── semantic_contract ─────────────────────────────────────────────────────
     {
-        let score = get_f64("semantic_contract");
         let error_rate = get_f64("semantic_fn_error_rate");
         let low_conf = get_f64("semantic_fn_low_confidence_rate");
         let intent = get_f64("semantic_fn_intent_coverage");
@@ -423,18 +500,20 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             score_default: 0.0,
             goal: "semantic_contract >= 0.50: error rate = 0, intent coverage rising".to_string(),
             trigger: format!(
-                "fn_error_rate={error_rate:.4}  intent_coverage={intent:.4}  low_confidence_rate={low_conf:.4}"
+                "fn_error_rate={error_rate:.4}  intent_coverage={intent:.4}  \
+                low_confidence_rate={low_conf:.4}"
             ),
             policy: "regenerate_semantic_artifacts",
-            action: "run canon-generate-issues --complexity-report-only; reduce fn_with_any_error to zero before treating low-confidence as failure".to_string(),
-            verify: format!("semantic_contract >= 0.50 on next eval or fn_error_rate = 0.0"),
+            action: "run canon-generate-issues --complexity-report-only; reduce \
+                fn_with_any_error to 0 before treating low-confidence as failure".to_string(),
+            verify: "semantic_contract >= 0.50 on next eval OR fn_error_rate = 0.0".to_string(),
+            machine_verify: VerifySpec::ScoreAbove { metric: "semantic_contract", threshold: 0.50 },
             owner: "executor",
-            evidence: "agent_state/semantic_manifest_proposals.json, agent_state/reports/complexity/latest.json",
+            evidence: "agent_state/semantic_manifest_proposals.json, \
+                agent_state/reports/complexity/latest.json",
         );
-        let _ = score; // used in trigger via captured variable
     }
 
-    // ── structural_invariant_coverage ─────────────────────────────────────────
     {
         let missing = get_arr_str("missing_structural_invariant_kinds");
         plan!(
@@ -442,32 +521,54 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             target: 1.0,
             score_key: "structural_invariant_coverage",
             score_default: 0.0,
-            goal: "all known graph structural risks have a matching enforced invariant".to_string(),
+            goal: "all known graph structural risks have a matching enforced invariant"
+                .to_string(),
             trigger: if missing.is_empty() {
-                format!("structural_invariant_coverage={:.3}", get_f64("structural_invariant_coverage"))
+                format!(
+                    "structural_invariant_coverage={:.3}",
+                    get_f64("structural_invariant_coverage")
+                )
             } else {
                 format!("missing invariants for: {missing}")
             },
             policy: "synthesize_structural_invariant",
-            action: "patch src/invariant_discovery.rs to synthesize the missing structural invariant; do not edit enforced_invariants.json directly".to_string(),
-            verify: "structural_invariant_coverage = 1.0 on next eval, missing_structural_invariant_kinds empty".to_string(),
+            action: "patch src/invariant_discovery.rs to synthesize the missing structural \
+                invariant; do not edit enforced_invariants.json directly".to_string(),
+            verify: "structural_invariant_coverage = 1.0; \
+                missing_structural_invariant_kinds empty".to_string(),
+            machine_verify: VerifySpec::ScoreAbove {
+                metric: "structural_invariant_coverage",
+                threshold: 1.0,
+            },
             owner: "executor",
-            evidence: "agent_state/enforced_invariants.json, state/rustc/canon_mini_agent/graph.json",
+            evidence: "agent_state/enforced_invariants.json, \
+                state/rustc/canon_mini_agent/graph.json",
         );
     }
 
-    // ── blocker_class_coverage ────────────────────────────────────────────────
     {
         let top = get_str("blocker_top_uncovered");
         let distinct = get_u64("blocker_distinct_classes");
         let covered = get_u64("blocker_covered_classes");
         let score = get_f64_or("blocker_class_coverage", 1.0);
+        let mv = if top.is_empty() {
+            VerifySpec::ScoreAbove { metric: "blocker_class_coverage", threshold: 1.0 }
+        } else {
+            VerifySpec::All(vec![
+                VerifySpec::ScoreImproves { metric: "blocker_class_coverage", from: score },
+                VerifySpec::FieldNotEquals {
+                    key: "blocker_top_uncovered",
+                    value: top.clone(),
+                },
+            ])
+        };
         plan!(
             metric: "blocker_class_coverage",
             target: 1.0,
             score_key: "blocker_class_coverage",
             score_default: 1.0,
-            goal: "every distinct runtime error class covered by an enforced invariant".to_string(),
+            goal: "every distinct runtime error class covered by an enforced invariant"
+                .to_string(),
             trigger: format!(
                 "{covered}/{distinct} classes covered; top uncovered: {}",
                 if top.is_empty() { "none".to_string() } else { top.clone() }
@@ -484,14 +585,17 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             verify: if top.is_empty() {
                 "blocker_class_coverage = 1.0 on next eval".to_string()
             } else {
-                format!("next eval blocker_class_coverage > {score:.3} AND top_uncovered != {top}")
+                format!(
+                    "blocker_class_coverage > {score:.3} AND top_uncovered != {top} \
+                    on next eval"
+                )
             },
+            machine_verify: mv,
             owner: "executor",
             evidence: "agent_state/blockers.json, agent_state/enforced_invariants.json",
         );
     }
 
-    // ── canonical_delta_health ────────────────────────────────────────────────
     {
         let truncations = get_u64("tlog_prompt_truncation_count");
         let lag_ms = get_u64("tlog_actionable_lag_total_ms");
@@ -503,20 +607,25 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             score_default: 0.0,
             goal: "prompt truncations eliminated; actionable lag below 300 s".to_string(),
             trigger: format!(
-                "prompt_truncations={truncations}  actionable_lag_ms={lag_ms}  dominant_payload={payload}"
+                "prompt_truncations={truncations}  actionable_lag_ms={lag_ms}  \
+                dominant_payload={payload}"
             ),
             policy: "reduce_prompt_pressure",
             action: format!(
-                "reduce the dominant payload kind '{payload}' in the prompt; \
-                increase eval run frequency to reduce actionable lag"
+                "reduce dominant payload '{payload}'; increase eval frequency to cut \
+                actionable lag"
             ),
-            verify: "canonical_delta_health >= 0.9 on next eval, prompt_truncations decreasing".to_string(),
+            verify: "canonical_delta_health >= 0.9; prompt_truncations decreasing".to_string(),
+            machine_verify: VerifySpec::ScoreAbove {
+                metric: "canonical_delta_health",
+                threshold: 0.9,
+            },
             owner: "planner",
-            evidence: "agent_state/tlog.ndjson tlog_dominant_payload_kind, tlog_prompt_truncation_count",
+            evidence: "agent_state/tlog.ndjson tlog_dominant_payload_kind, \
+                tlog_prompt_truncation_count",
         );
     }
 
-    // ── improvement_measurement ───────────────────────────────────────────────
     {
         let unmeasured = get_u64("unmeasured_improvement_attempts");
         let attempts = get_u64("improvement_attempts");
@@ -527,17 +636,22 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             score_default: 1.0,
             goal: "every apply_patch improvement has a measured eval delta in tlog".to_string(),
             trigger: format!(
-                "{unmeasured}/{attempts} improvement attempts have no follow-up eval score"
+                "{unmeasured}/{attempts} improvement attempts have no follow-up eval"
             ),
             policy: "run_eval_after_patch",
-            action: "after every apply_patch, run canon-generate-issues --complexity-report-only before marking the executor task done".to_string(),
-            verify: "improvement_measurement = 1.0 on next eval, unmeasured_improvement_attempts = 0".to_string(),
+            action: "after every apply_patch, run canon-generate-issues \
+                --complexity-report-only before marking the task done".to_string(),
+            verify: "improvement_measurement = 1.0; unmeasured_improvement_attempts = 0"
+                .to_string(),
+            machine_verify: VerifySpec::ScoreAbove {
+                metric: "improvement_measurement",
+                threshold: 1.0,
+            },
             owner: "executor",
-            evidence: "agent_state/tlog.ndjson unmeasured_improvement_attempts in eval_score_recorded",
+            evidence: "agent_state/tlog.ndjson unmeasured_improvement_attempts",
         );
     }
 
-    // ── improvement_validation ────────────────────────────────────────────────
     {
         let unvalidated = get_u64("unvalidated_improvement_attempts");
         let attempts = get_u64("improvement_attempts");
@@ -546,19 +660,25 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             target: 1.0,
             score_key: "improvement_validation",
             score_default: 1.0,
-            goal: "every improvement attempt has cargo check/test verification in tlog".to_string(),
+            goal: "every improvement attempt has cargo check/test verification in tlog"
+                .to_string(),
             trigger: format!(
-                "{unvalidated}/{attempts} improvements have no cargo verification result in tlog"
+                "{unvalidated}/{attempts} improvements have no cargo result in tlog"
             ),
             policy: "verify_after_patch",
-            action: "run cargo check -p canon-mini-agent immediately after every apply_patch before completing the executor turn".to_string(),
-            verify: "improvement_validation = 1.0 on next eval, unvalidated_improvement_attempts = 0".to_string(),
+            action: "run cargo check -p canon-mini-agent immediately after every apply_patch"
+                .to_string(),
+            verify: "improvement_validation = 1.0; unvalidated_improvement_attempts = 0"
+                .to_string(),
+            machine_verify: VerifySpec::ScoreAbove {
+                metric: "improvement_validation",
+                threshold: 1.0,
+            },
             owner: "executor",
-            evidence: "agent_state/tlog.ndjson unvalidated_improvement_attempts in eval_score_recorded",
+            evidence: "agent_state/tlog.ndjson unvalidated_improvement_attempts",
         );
     }
 
-    // ── improvement_effectiveness ─────────────────────────────────────────────
     {
         let regressed = get_u64("regressed_improvement_attempts");
         let measured = get_u64("measured_improvement_attempts");
@@ -569,17 +689,22 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             score_default: 1.0,
             goal: "at least 80% of measured improvements raise the eval score".to_string(),
             trigger: format!(
-                "{regressed}/{measured} measured improvements caused an eval score regression"
+                "{regressed}/{measured} measured improvements caused eval score regression"
             ),
             policy: "revert_regressing_patches",
-            action: "identify regressing improvements in tlog (delta_g < 0 after apply_patch) and revert or narrow their patch scope".to_string(),
-            verify: "improvement_effectiveness >= 0.8 on next eval, regressed_improvement_attempts does not increase".to_string(),
+            action: "identify regressing improvements in tlog (delta_g < 0 after apply_patch) \
+                and revert or narrow their scope".to_string(),
+            verify: "improvement_effectiveness >= 0.8; regressed_improvement_attempts stable"
+                .to_string(),
+            machine_verify: VerifySpec::ScoreAbove {
+                metric: "improvement_effectiveness",
+                threshold: 0.8,
+            },
             owner: "executor",
-            evidence: "agent_state/tlog.ndjson delta_g in eval_score_recorded following apply_patch action_result_recorded",
+            evidence: "agent_state/tlog.ndjson delta_g in eval_score_recorded",
         );
     }
 
-    // ── recovery_effectiveness ────────────────────────────────────────────────
     {
         let failures = get_u64("recovery_failures");
         let attempts = get_u64("recovery_attempts");
@@ -590,25 +715,79 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             score_default: 1.0,
             goal: "all typed recovery attempts resolve the blocker class".to_string(),
             trigger: format!(
-                "recovery_failures={failures}/{attempts}; some recovery policies not resolving the blocker"
+                "recovery_failures={failures}/{attempts}; some policies not resolving blocker"
             ),
             policy: "inspect_failed_recovery",
-            action: "inspect recovery_outcome_recorded events in tlog where success=false; patch the failing recovery policy in src/recovery.rs".to_string(),
-            verify: "recovery_effectiveness = 1.0 on next eval, recovery_failures = 0".to_string(),
+            action: "inspect recovery_outcome_recorded events in tlog where success=false; \
+                patch the failing policy in src/recovery.rs".to_string(),
+            verify: "recovery_effectiveness = 1.0; recovery_failures = 0".to_string(),
+            machine_verify: VerifySpec::ScoreAbove {
+                metric: "recovery_effectiveness",
+                threshold: 1.0,
+            },
             owner: "executor",
-            evidence: "agent_state/tlog.ndjson recovery_outcome_recorded events with success=false",
+            evidence: "agent_state/tlog.ndjson recovery_outcome_recorded with success=false",
         );
     }
 
     plans.sort_by(|a, b| {
-        a.priority.cmp(&b.priority).then(
-            a.score
-                .partial_cmp(&b.score)
-                .unwrap_or(std::cmp::Ordering::Equal),
-        )
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
     });
     plans.truncate(max);
     plans
+}
+
+// ── snapshot → eval map ───────────────────────────────────────────────────────
+
+/// Convert a live `EvaluationWorkspaceSnapshot` to the eval JSON map that
+/// `build_eval_metric_plans` and `VerifySpec::check` consume.
+/// Used by `eval_driver` so it doesn't need to re-read `latest.json`.
+pub fn snapshot_to_eval_map(
+    snapshot: &crate::evaluation::EvaluationWorkspaceSnapshot,
+) -> Map<String, Value> {
+    let v = &snapshot.vector;
+    let t = &snapshot.tlog_delta_signals;
+    let b = &snapshot.blocker_class_coverage;
+    let s = &snapshot.structural_invariant_coverage;
+    let mut m = Map::new();
+    m.insert("objective_progress".into(), json!(v.objective_progress));
+    m.insert("safety".into(), json!(v.safety));
+    m.insert("task_velocity".into(), json!(v.task_velocity));
+    m.insert("issue_health".into(), json!(v.issue_health));
+    m.insert("semantic_contract".into(), json!(v.semantic_contract));
+    m.insert("structural_invariant_coverage".into(), json!(v.structural_invariant_coverage));
+    m.insert("blocker_class_coverage".into(), json!(v.blocker_class_coverage));
+    m.insert("canonical_delta_health".into(), json!(v.canonical_delta_health));
+    m.insert("improvement_measurement".into(), json!(v.improvement_measurement));
+    m.insert("improvement_validation".into(), json!(v.improvement_validation));
+    m.insert("improvement_effectiveness".into(), json!(v.improvement_effectiveness));
+    m.insert("recovery_effectiveness".into(), json!(v.recovery_effectiveness));
+    m.insert("blocker_distinct_classes".into(), json!(b.distinct_classes));
+    m.insert("blocker_covered_classes".into(), json!(b.covered_classes));
+    m.insert(
+        "blocker_top_uncovered".into(),
+        json!(b.top_uncovered.as_deref().unwrap_or("")),
+    );
+    m.insert("missing_structural_invariant_kinds".into(), json!(s.missing));
+    m.insert("tlog_prompt_truncation_count".into(), json!(t.prompt_truncations));
+    m.insert("tlog_actionable_lag_total_ms".into(), json!(t.actionable_lag_total_ms));
+    m.insert("tlog_dominant_payload_kind".into(), json!(t.dominant_payload_kind));
+    m.insert("improvement_attempts".into(), json!(t.improvement_attempts));
+    m.insert("unmeasured_improvement_attempts".into(), json!(t.unmeasured_improvement_attempts));
+    m.insert("unvalidated_improvement_attempts".into(), json!(t.unvalidated_improvement_attempts));
+    m.insert("regressed_improvement_attempts".into(), json!(t.regressed_improvement_attempts));
+    m.insert("measured_improvement_attempts".into(), json!(t.measured_improvement_attempts));
+    m.insert("recovery_attempts".into(), json!(t.recovery_attempts));
+    m.insert("recovery_failures".into(), json!(t.recovery_failures));
+    m.insert("semantic_fn_error_rate".into(), json!(snapshot.semantic_fn_error_rate));
+    m.insert("semantic_fn_intent_coverage".into(), json!(snapshot.semantic_fn_intent_coverage));
+    m.insert(
+        "semantic_fn_low_confidence_rate".into(),
+        json!(snapshot.semantic_fn_low_confidence_rate),
+    );
+    m
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -663,14 +842,13 @@ mod tests {
 
     #[test]
     fn every_plan_has_required_fields() {
-        let eval = all_weak_eval();
-        let plans = build_eval_metric_plans(&eval, 12);
+        let plans = build_eval_metric_plans(&all_weak_eval(), 12);
         assert!(!plans.is_empty());
-        for plan in &plans {
-            assert!(!plan.action.is_empty(), "{} has empty action", plan.id);
-            assert!(!plan.verify.is_empty(), "{} has empty verify", plan.id);
-            assert!(!plan.goal.is_empty(), "{} has empty goal", plan.id);
-            assert!(!plan.trigger.is_empty(), "{} has empty trigger", plan.id);
+        for p in &plans {
+            assert!(!p.action.is_empty(), "{} empty action", p.id);
+            assert!(!p.verify.is_empty(), "{} empty verify", p.id);
+            assert!(!p.goal.is_empty(), "{} empty goal", p.id);
+            assert!(!p.trigger.is_empty(), "{} empty trigger", p.id);
         }
     }
 
@@ -690,105 +868,177 @@ mod tests {
         m.insert("blocker_covered_classes".into(), json!(0u64));
         m.insert("blocker_top_uncovered".into(), json!(""));
         let plans = build_eval_metric_plans(&m, 12);
-        assert!(plans.is_empty(), "got plans for passing metrics: {:?}",
+        assert!(plans.is_empty(), "got plans: {:?}",
             plans.iter().map(|p| &p.id).collect::<Vec<_>>());
     }
 
     #[test]
-    fn plans_sorted_by_priority_then_score_ascending() {
-        let eval = all_weak_eval();
-        let plans = build_eval_metric_plans(&eval, 12);
-        for window in plans.windows(2) {
-            let a = &window[0];
-            let b = &window[1];
-            // Primary: priority ascending
-            assert!(
-                a.priority <= b.priority,
-                "priority not sorted: {} (priority={}) before {} (priority={})",
-                a.id, a.priority, b.id, b.priority
-            );
-            // Secondary: within same priority, score ascending
-            if a.priority == b.priority {
-                assert!(
-                    a.score <= b.score + 0.001,
-                    "score not sorted within priority {}: {} ({:.3}) before {} ({:.3})",
-                    a.priority, a.id, a.score, b.id, b.score
-                );
+    fn plans_sorted_by_priority_then_score() {
+        let plans = build_eval_metric_plans(&all_weak_eval(), 12);
+        for w in plans.windows(2) {
+            assert!(w[0].priority <= w[1].priority,
+                "priority: {} ({}) before {} ({})",
+                w[0].id, w[0].priority, w[1].id, w[1].priority);
+            if w[0].priority == w[1].priority {
+                assert!(w[0].score <= w[1].score + 0.001,
+                    "score within prio {}: {} ({:.3}) before {} ({:.3})",
+                    w[0].priority, w[0].id, w[0].score, w[1].id, w[1].score);
             }
         }
     }
 
     #[test]
     fn max_count_capped() {
-        let eval = all_weak_eval();
-        let plans = build_eval_metric_plans(&eval, 3);
-        assert!(plans.len() <= 3);
+        assert!(build_eval_metric_plans(&all_weak_eval(), 3).len() <= 3);
     }
 
     #[test]
-    fn blocker_plan_names_uncovered_class_in_action_and_verify() {
-        let eval = all_weak_eval();
-        let plans = build_eval_metric_plans(&eval, 12);
-        let bp = plans.iter().find(|p| p.id.starts_with("blocker_class_coverage")).unwrap();
+    fn stable_id_format() {
+        for p in build_eval_metric_plans(&all_weak_eval(), 12) {
+            assert!(p.id.starts_with("eval_metric:"), "id '{}' missing prefix", p.id);
+        }
+    }
+
+    #[test]
+    fn blocker_plan_names_uncovered_class() {
+        let plans = build_eval_metric_plans(&all_weak_eval(), 12);
+        let bp = plans.iter()
+            .find(|p| p.id == "eval_metric:blocker_class_coverage")
+            .expect("blocker_class_coverage should be weak");
         assert!(bp.action.contains("llm_timeout"), "action: {}", bp.action);
         assert!(bp.verify.contains("llm_timeout"), "verify: {}", bp.verify);
     }
 
     #[test]
-    fn invariant_plan_generated_for_promoted_status() {
-        let inv_json = r#"{
-            "version": 1,
-            "invariants": [
-                {
-                    "id": "INV-test123",
-                    "predicate_text": "some repeated failure condition",
-                    "status": "promoted",
-                    "support_count": 12,
-                    "gates": ["executor"]
-                },
-                {
-                    "id": "INV-other",
-                    "predicate_text": "already enforced",
-                    "status": "enforced",
-                    "support_count": 5,
-                    "gates": ["route"]
-                }
-            ]
-        }"#;
-        let plans = build_invariant_plans(inv_json, 10);
-        assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].id, "INV-test123");
-        assert!(plans[0].action.contains("INV-test123"));
-        assert!(plans[0].verify.contains("INV-test123"));
-        assert_eq!(plans[0].kind, "invariant");
+    fn blocker_plan_machine_verify_is_all_when_top_uncovered_set() {
+        let plans = build_eval_metric_plans(&all_weak_eval(), 12);
+        let bp = plans.iter()
+            .find(|p| p.id == "eval_metric:blocker_class_coverage")
+            .expect("blocker_class_coverage should be weak");
+        assert!(matches!(bp.machine_verify, VerifySpec::All(_)),
+            "expected All spec when top_uncovered is set");
+    }
+
+    // ── VerifySpec::check ─────────────────────────────────────────────────────
+
+    #[test]
+    fn score_above_passes_at_threshold() {
+        let mut m = Map::new();
+        m.insert("x".into(), json!(0.9));
+        assert!(VerifySpec::ScoreAbove { metric: "x", threshold: 0.9 }.check(&m, ""));
     }
 
     #[test]
-    fn blocker_class_plan_generated_for_uncovered_class() {
+    fn score_above_fails_below_threshold() {
+        let mut m = Map::new();
+        m.insert("x".into(), json!(0.89));
+        assert!(!VerifySpec::ScoreAbove { metric: "x", threshold: 0.9 }.check(&m, ""));
+    }
+
+    #[test]
+    fn score_improves_passes_when_higher() {
+        let mut m = Map::new();
+        m.insert("x".into(), json!(0.5));
+        assert!(VerifySpec::ScoreImproves { metric: "x", from: 0.33 }.check(&m, ""));
+    }
+
+    #[test]
+    fn score_improves_fails_when_same() {
+        let mut m = Map::new();
+        m.insert("x".into(), json!(0.33));
+        assert!(!VerifySpec::ScoreImproves { metric: "x", from: 0.33 }.check(&m, ""));
+    }
+
+    #[test]
+    fn field_not_equals_passes_when_different() {
+        let mut m = Map::new();
+        m.insert("k".into(), json!("other"));
+        assert!(VerifySpec::FieldNotEquals { key: "k", value: "llm_timeout".into() }.check(&m, ""));
+    }
+
+    #[test]
+    fn field_not_equals_fails_when_same() {
+        let mut m = Map::new();
+        m.insert("k".into(), json!("llm_timeout"));
+        assert!(!VerifySpec::FieldNotEquals { key: "k", value: "llm_timeout".into() }.check(&m, ""));
+    }
+
+    #[test]
+    fn all_passes_when_all_pass() {
+        let mut m = Map::new();
+        m.insert("x".into(), json!(1.0));
+        m.insert("k".into(), json!("other"));
+        let spec = VerifySpec::All(vec![
+            VerifySpec::ScoreAbove { metric: "x", threshold: 0.9 },
+            VerifySpec::FieldNotEquals { key: "k", value: "llm_timeout".into() },
+        ]);
+        assert!(spec.check(&m, ""));
+    }
+
+    #[test]
+    fn all_fails_when_any_fails() {
+        let mut m = Map::new();
+        m.insert("x".into(), json!(1.0));
+        m.insert("k".into(), json!("llm_timeout"));
+        let spec = VerifySpec::All(vec![
+            VerifySpec::ScoreAbove { metric: "x", threshold: 0.9 },
+            VerifySpec::FieldNotEquals { key: "k", value: "llm_timeout".into() },
+        ]);
+        assert!(!spec.check(&m, ""));
+    }
+
+    #[test]
+    fn invariant_resolved_passes_for_enforced() {
+        let json = r#"{"invariants":[{"id":"INV-abc","status":"enforced","predicate_text":"","support_count":1}]}"#;
+        assert!(VerifySpec::InvariantResolved { id: "INV-abc".into() }.check(&Map::new(), json));
+    }
+
+    #[test]
+    fn invariant_resolved_fails_for_promoted() {
+        let json = r#"{"invariants":[{"id":"INV-abc","status":"promoted","predicate_text":"","support_count":1}]}"#;
+        assert!(!VerifySpec::InvariantResolved { id: "INV-abc".into() }.check(&Map::new(), json));
+    }
+
+    // ── invariant and blocker class plans ─────────────────────────────────────
+
+    #[test]
+    fn invariant_plan_for_promoted_only() {
+        let json = r#"{"version":1,"invariants":[
+            {"id":"INV-p","predicate_text":"repeated failure","status":"promoted","support_count":12,"gates":["executor"]},
+            {"id":"INV-e","predicate_text":"already ok","status":"enforced","support_count":5,"gates":["route"]}
+        ]}"#;
+        let plans = build_invariant_plans(json, 10);
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].id, "invariant:INV-p");
+        assert!(matches!(&plans[0].machine_verify,
+            VerifySpec::InvariantResolved { id } if id == "INV-p"));
+    }
+
+    #[test]
+    fn blocker_class_plan_for_uncovered() {
         let blockers = r#"{"version":1,"blockers":[
             {"id":"b1","error_class":"llm_timeout","actor":"planner","summary":"t","action_kind":"llm_request","source":"action_result","ts_ms":1},
             {"id":"b2","error_class":"llm_timeout","actor":"planner","summary":"t","action_kind":"llm_request","source":"action_result","ts_ms":2}
         ]}"#;
-        // invariant text does NOT contain "llm_timeout"
-        let invariants = r#"{"invariants":[{"predicate_text":"missing_target only","status":"enforced","gates":["route"]}]}"#;
+        let invariants = r#"{"invariants":[{"predicate_text":"only missing_target","status":"enforced","support_count":1,"gates":[]}]}"#;
         let plans = build_blocker_class_plans(blockers, invariants, 10);
         assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].id, "llm_timeout");
-        assert!(plans[0].action.contains("llm_timeout"));
-        assert!(plans[0].verify.contains("llm_timeout"));
-        assert_eq!(plans[0].kind, "blocker_class");
+        assert_eq!(plans[0].id, "blocker_class:llm_timeout");
+        assert!(matches!(&plans[0].machine_verify,
+            VerifySpec::FieldNotEquals { key: "blocker_top_uncovered", value }
+                if value == "llm_timeout"));
     }
 
+    // ── render ────────────────────────────────────────────────────────────────
+
     #[test]
-    fn rendered_plan_contains_all_block_fields() {
-        let eval = all_weak_eval();
-        let plans = build_eval_metric_plans(&eval, 1);
-        let rendered = render_plan(&plans[0]);
-        for field in &[
-            "REPAIR_PLAN", "kind:", "id:", "goal:", "trigger:",
-            "policy:", "action:", "verify:", "owner:", "evidence:",
+    fn rendered_plan_has_all_fields() {
+        let r = render_plan(&build_eval_metric_plans(&all_weak_eval(), 1)[0]);
+        for f in &[
+            "REPAIR_PLAN", "kind:", "id:", "goal:", "trigger:", "policy:",
+            "action:", "verify:", "machine_verify:", "owner:", "evidence:",
         ] {
-            assert!(rendered.contains(field), "missing field: {field}\n{rendered}");
+            assert!(r.contains(f), "missing: {f}\n{r}");
         }
     }
 }
