@@ -526,16 +526,25 @@ pub(super) fn executor_blocker_handoff_message(payload: Value) -> Value {
 }
 
 fn executor_blocker_handoff_message_value(observation: &str, rationale: &str, payload: Value) -> Value {
+    executor_blocker_handoff_envelope(observation, rationale, payload)
+}
+
+fn executor_blocker_handoff_envelope(observation: &str, rationale: &str, payload: Value) -> Value {
+    let (from, to, msg_type, status) = executor_blocker_handoff_route();
     json!({
         "action": "message",
-        "from": "executor",
-        "to": "planner",
-        "type": "blocker",
-        "status": "blocked",
+        "from": from,
+        "to": to,
+        "type": msg_type,
+        "status": status,
         "observation": observation,
         "rationale": rationale,
         "payload": payload
     })
+}
+
+fn executor_blocker_handoff_route() -> (&'static str, &'static str, &'static str, &'static str) {
+    ("executor", "planner", "blocker", "blocked")
 }
 
 fn executor_blocker_handoff_explanation() -> (&'static str, &'static str) {

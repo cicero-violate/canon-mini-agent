@@ -484,14 +484,14 @@ fn build_eval_header(workspace: &Path) -> String {
             "structural_invariant_coverage",
             get_f64("structural_invariant_coverage"),
         ),
+        (
+            "blocker_class_coverage",
+            get_f64_or("blocker_class_coverage", 1.0),
+        ),
         ("semantic_contract", semantic.semantic_contract),
     ];
 
-    let (weakest_name, weakest_val) = dims
-        .iter()
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .copied()
-        .unwrap_or(("unknown", 0.0));
+    let (weakest_name, weakest_val) = weakest_eval_dimension(&dims);
 
     let directive = eval_score_directive(weakest_name);
     let eval_gate = if get_bool("eval_enforcement_passed") {
@@ -529,7 +529,8 @@ semantic_intent={semantic_fn_intent_classified}/{semantic_fn_total}({semantic_fn
 semantic_totalized={semantic_fn_totalized}/{semantic_fn_total}({semantic_fn_totalization_coverage:.4})  \
 semantic_low_confidence={semantic_fn_low_confidence}({semantic_fn_low_confidence_rate:.4})\n\
 eval_gate={eval_gate}  violations={eval_violations}  warnings={eval_warnings}  \
-prompt_truncations={prompt_truncations}  truncation_dropped={truncation_dropped}B\n\
+prompt_truncations={prompt_truncations}  truncation_dropped={truncation_dropped}B  \
+blocker_coverage={blocker_class_coverage:.3}  blocker_classes={blocker_distinct}  top_uncovered={blocker_top_uncovered}\n\
 lag_action={lag_kind}({lag_ms}ms)  payload={payload_kind}({payload_bytes}B)  \
 plan_payload={plan_payload_bytes}B  measured_improvements={measured}/{attempts}  \
 unmeasured={unmeasured}  validated_improvements={validated}/{attempts}  \
@@ -559,6 +560,9 @@ recovery_suppressed={recovery_suppressed}\n\
         recovery_attempts = get_u64("recovery_attempts"),
         recovery_failures = get_u64("recovery_failures"),
         recovery_suppressed = get_u64("recovery_suppressed"),
+        blocker_class_coverage = get_f64_or("blocker_class_coverage", 1.0),
+        blocker_distinct = get_u64("blocker_distinct_classes"),
+        blocker_top_uncovered = get_str("blocker_top_uncovered"),
         semantic_contract = semantic.semantic_contract,
         semantic_fn_with_any_error = semantic.fn_with_any_error,
         semantic_fn_total = semantic.fn_total,
@@ -570,6 +574,13 @@ recovery_suppressed={recovery_suppressed}\n\
         semantic_fn_low_confidence = semantic.fn_low_confidence,
         semantic_fn_low_confidence_rate = semantic.fn_low_confidence_rate,
     )
+}
+
+fn weakest_eval_dimension<'a>(dims: &'a [(&'a str, f64)]) -> (&'a str, f64) {
+    dims.iter()
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .copied()
+        .unwrap_or(("unknown", 0.0))
 }
 
 fn eval_report_path(workspace: &Path) -> std::path::PathBuf {
@@ -601,9 +612,9 @@ fn eval_header_semantic_summary(
     let get_u64 = |key: &str| eval.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
     let metrics = crate::semantic_contract::load_semantic_manifest_metrics(workspace);
     let live = metrics.fn_total > 0;
-    let fn_total = if live { metrics.fn_total as u64 } else { get_u64("semantic_fn_total") };
-    let fn_intent_classified = if live { metrics.fn_intent_classified as u64 } else { get_u64("semantic_fn_intent_classified") };
-    let fn_low_confidence = if live { metrics.fn_low_confidence as u64 } else { get_u64("semantic_fn_low_confidence") };
+    let fn_total = semantic_metric_u64(live, metrics.fn_total, get_u64("semantic_fn_total"));
+    let fn_intent_classified = semantic_metric_u64(live, metrics.fn_intent_classified, get_u64("semantic_fn_intent_classified"));
+    let fn_low_confidence = semantic_metric_u64(live, metrics.fn_low_confidence, get_u64("semantic_fn_low_confidence"));
     let fn_totalized = fn_intent_classified.saturating_add(fn_low_confidence).min(fn_total);
     EvalHeaderSemanticSummary {
         semantic_contract: if live { metrics.score() } else { get_f64("semantic_contract") },
@@ -617,6 +628,10 @@ fn eval_header_semantic_summary(
         fn_totalized,
         fn_totalization_coverage: ratio(fn_totalized as usize, fn_total as usize),
     }
+}
+
+fn semantic_metric_u64(live: bool, live_value: usize, fallback: u64) -> u64 {
+    if live { live_value as u64 } else { fallback }
 }
 
 
@@ -664,6 +679,9 @@ fn eval_score_directive(weakest_name: &str) -> &'static str {
         }
         "structural_invariant_coverage" => {
             "implement source-code synthesis for missing graph-risk invariant candidates; do not patch enforced_invariants.json directly"
+        }
+        "blocker_class_coverage" => {
+            "add a typed enforced invariant for the top uncovered blocker class via invariant_discovery.rs"
         }
         "semantic_contract" => {
             "regenerate semantic artifacts and reduce hard semantic errors before treating optional uncertainty as failure"

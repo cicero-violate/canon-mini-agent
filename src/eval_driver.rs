@@ -129,6 +129,14 @@ pub fn run(
         tlog_prompt_truncation_dropped_bytes: snapshot
             .tlog_delta_signals
             .prompt_truncation_dropped_bytes,
+        blocker_distinct_classes: snapshot.blocker_class_coverage.distinct_classes,
+        blocker_covered_classes: snapshot.blocker_class_coverage.covered_classes,
+        blocker_top_uncovered: snapshot
+            .blocker_class_coverage
+            .top_uncovered
+            .clone()
+            .unwrap_or_default(),
+        blocker_class_coverage: snapshot.vector.blocker_class_coverage,
     };
 
     if let Some(w) = writer {

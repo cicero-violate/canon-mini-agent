@@ -28,6 +28,7 @@ pub struct EvalInput {
     pub semantic_fn_intent_coverage: f64,
     pub semantic_fn_low_confidence_rate: f64,
     pub structural_invariant_coverage: StructuralInvariantCoverage,
+    pub blocker_class_coverage: BlockerClassCoverage,
     pub tlog_delta_signals: TlogDeltaSignals,
 }
 
@@ -59,6 +60,7 @@ pub struct EvaluationVector {
     pub issue_health: f64,
     pub semantic_contract: f64,
     pub structural_invariant_coverage: f64,
+    pub blocker_class_coverage: f64,
     pub canonical_delta_health: f64,
     pub improvement_measurement: f64,
     pub improvement_validation: f64,
@@ -75,6 +77,7 @@ impl EvaluationVector {
             self.issue_health.clamp(0.001, 1.0),
             self.semantic_contract.clamp(0.001, 1.0),
             self.structural_invariant_coverage.clamp(0.001, 1.0),
+            self.blocker_class_coverage.clamp(0.001, 1.0),
             self.canonical_delta_health.clamp(0.001, 1.0),
             self.improvement_measurement.clamp(0.001, 1.0),
             self.improvement_validation.clamp(0.001, 1.0),
@@ -93,6 +96,30 @@ pub struct StructuralInvariantCoverage {
     pub missing_invariant_count: usize,
     pub score: f64,
     pub missing: Vec<String>,
+}
+
+/// Runtime blocker class coverage: fraction of distinct recurring error classes
+/// that have a matching entry in enforced_invariants.json.
+#[derive(Debug, Clone)]
+pub struct BlockerClassCoverage {
+    pub distinct_classes: usize,
+    pub covered_classes: usize,
+    pub uncovered_classes: Vec<String>,
+    /// The error_class key with the highest blocker count that has no invariant.
+    pub top_uncovered: Option<String>,
+    pub score: f64,
+}
+
+impl Default for BlockerClassCoverage {
+    fn default() -> Self {
+        Self {
+            distinct_classes: 0,
+            covered_classes: 0,
+            uncovered_classes: Vec::new(),
+            top_uncovered: None,
+            score: 1.0, // no blockers → full coverage
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -114,6 +141,7 @@ pub struct EvaluationWorkspaceSnapshot {
     pub semantic_fn_intent_coverage: f64,
     pub semantic_fn_low_confidence_rate: f64,
     pub structural_invariant_coverage: StructuralInvariantCoverage,
+    pub blocker_class_coverage: BlockerClassCoverage,
     pub tlog_delta_signals: TlogDeltaSignals,
     pub eval_enforcement: EvalEnforcement,
     pub vector: EvaluationVector,
@@ -174,6 +202,7 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
     );
     // Fold semantic error rate into safety so a clean build alone cannot produce safety = 1.0.
     vector.safety = clamp_unit(vector.safety * (1.0 - 0.3 * semantic_fn_error_rate));
+    vector.blocker_class_coverage = input.blocker_class_coverage.score.clamp(0.001, 1.0);
     let diagnostics_repair_pressure = diagnostics_repair_pressure_with_issues(
         &input.diagnostics,
         input.high_priority_open_issues,
@@ -205,6 +234,7 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         semantic_fn_intent_coverage: intent_coverage,
         semantic_fn_low_confidence_rate,
         structural_invariant_coverage: input.structural_invariant_coverage.clone(),
+        blocker_class_coverage: input.blocker_class_coverage.clone(),
         tlog_delta_signals: input.tlog_delta_signals.clone(),
         eval_enforcement,
         vector,
@@ -376,10 +406,7 @@ fn append_eval_threshold_warnings(
         ));
     }
     if semantic_contract_score < EVAL_MIN_SEMANTIC_CONTRACT_WARNING {
-        warnings.push(format!(
-            "semantic_contract={:.4} < {:.4}",
-            semantic_contract_score, EVAL_MIN_SEMANTIC_CONTRACT_WARNING
-        ));
+        append_semantic_contract_warning(warnings, semantic_contract_score);
     }
     if diagnostics_repair_pressure > 0.0 {
         warnings.push(format!(
@@ -387,6 +414,13 @@ fn append_eval_threshold_warnings(
             diagnostics_repair_pressure
         ));
     }
+}
+
+fn append_semantic_contract_warning(warnings: &mut Vec<String>, semantic_contract_score: f64) {
+    warnings.push(format!(
+        "semantic_contract={:.4} < {:.4}",
+        semantic_contract_score, EVAL_MIN_SEMANTIC_CONTRACT_WARNING
+    ));
 }
 
 /// Pure delta — no I/O.  Call after two consecutive `compute_eval` results.
@@ -486,6 +520,7 @@ pub fn evaluate_repo_state(
         issue_health: issue_health_score(open_issues, repeated_open_issues),
         semantic_contract: semantic_contract_score.clamp(0.0, 1.0),
         structural_invariant_coverage: structural_invariant_coverage_score.clamp(0.0, 1.0),
+        blocker_class_coverage: 1.0, // set by compute_eval after this call
         canonical_delta_health: canonical_delta_health_score.clamp(0.0, 1.0),
         improvement_measurement: improvement_measurement_score.clamp(0.0, 1.0),
         improvement_validation: improvement_validation_score.clamp(0.0, 1.0),
@@ -522,6 +557,7 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
         load_issue_counts(workspace);
     let semantic_metrics = crate::semantic_contract::load_semantic_manifest_metrics(workspace);
     let structural_invariant_coverage = load_structural_invariant_coverage(workspace);
+    let blocker_class_coverage = load_blocker_class_coverage(workspace);
 
     compute_eval(&EvalInput {
         objectives_completed,
@@ -541,6 +577,7 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
         semantic_fn_intent_coverage: semantic_metrics.fn_intent_coverage,
         semantic_fn_low_confidence_rate: semantic_metrics.fn_low_confidence_rate,
         structural_invariant_coverage,
+        blocker_class_coverage,
         tlog_delta_signals,
     })
 }
@@ -1205,20 +1242,22 @@ fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
         "llm_timeout" => text.contains("timeout"),
         "compile_error" => text.contains("cargo") || text.contains("compile"),
         "verification_failed" => text.contains("verification"),
-        "projection_refresh_stalled" => {
-            text.contains("projection refresh stalled")
-                || text.contains("projection remains stale")
-                || text.contains("stale latest.json")
-                || text.contains("latest.json remains stale")
-                || text.contains("long-running regeneration")
-                || text.contains("refresh pid")
-        }
+        "projection_refresh_stalled" => recovery_reason_mentions_projection_stall(&text),
         "invalid_schema" => text.contains("schema"),
         "step_limit_exceeded" => text.contains("step limit") || text.contains("step budget"),
         "checkpoint_runtime_divergence" => text.contains("checkpoint"),
         "reaction_only" => text.contains("reaction_only") || text.contains("prose-only"),
         _ => false,
     }
+}
+
+fn recovery_reason_mentions_projection_stall(text: &str) -> bool {
+    text.contains("projection refresh stalled")
+        || text.contains("projection remains stale")
+        || text.contains("stale latest.json")
+        || text.contains("latest.json remains stale")
+        || text.contains("long-running regeneration")
+        || text.contains("refresh pid")
 }
 
 fn is_successful_improvement_action(action: &str, result: &str) -> bool {
@@ -1279,6 +1318,66 @@ fn is_actionable_lag_kind(kind: &str) -> bool {
             | "orchestrator_idle_pulse"
             | "orchestrator_mode_set"
     )
+}
+
+/// Pure computation: groups blockers by error_class key, then checks whether
+/// each key appears anywhere in the enforced_invariants.json text.
+pub fn compute_blocker_class_coverage(
+    blockers: &crate::blockers::BlockersFile,
+    invariant_text: &str,
+) -> BlockerClassCoverage {
+    use crate::error_class::ErrorClass;
+    let mut class_counts: HashMap<String, usize> = HashMap::new();
+    for b in &blockers.blockers {
+        if b.error_class == ErrorClass::Unknown {
+            continue;
+        }
+        *class_counts
+            .entry(b.error_class.as_key().to_string())
+            .or_default() += 1;
+    }
+    if class_counts.is_empty() {
+        return BlockerClassCoverage::default();
+    }
+    let invariant_lower = invariant_text.to_ascii_lowercase();
+    let distinct_classes = class_counts.len();
+    let mut covered = 0usize;
+    let mut uncovered: Vec<String> = Vec::new();
+    let mut top_uncovered: Option<String> = None;
+    let mut top_count = 0usize;
+    let mut sorted_keys: Vec<&String> = class_counts.keys().collect();
+    sorted_keys.sort();
+    for key in sorted_keys {
+        let count = class_counts[key];
+        if invariant_lower.contains(key.as_str()) {
+            covered += 1;
+        } else {
+            uncovered.push(key.clone());
+            if count > top_count {
+                top_count = count;
+                top_uncovered = Some(key.clone());
+            }
+        }
+    }
+    let score = covered as f64 / distinct_classes as f64;
+    BlockerClassCoverage {
+        distinct_classes,
+        covered_classes: covered,
+        uncovered_classes: uncovered,
+        top_uncovered,
+        score,
+    }
+}
+
+fn load_blocker_class_coverage(workspace: &Path) -> BlockerClassCoverage {
+    let blockers = crate::blockers::load_blockers(workspace);
+    let invariant_text = std::fs::read_to_string(
+        workspace
+            .join("agent_state")
+            .join("enforced_invariants.json"),
+    )
+    .unwrap_or_default();
+    compute_blocker_class_coverage(&blockers, &invariant_text)
 }
 
 fn load_structural_invariant_coverage(workspace: &Path) -> StructuralInvariantCoverage {
@@ -1537,7 +1636,7 @@ mod tests {
     use super::*;
 
     fn base_eval_input() -> EvalInput {
-        EvalInput { objectives_completed: 1, objectives_total: 1, violations: ViolationsReport { status: "ok".to_string(), summary: String::new(), violations: Vec::new() }, completed_tasks: 1, total_tasks: 1, open_issues: 0, repeated_open_issues: 0, high_priority_open_issues: 0, diagnostics: empty_diagnostics_report(), semantic_fn_total: 0, semantic_fn_with_any_error: 0, semantic_fn_error_rate: 0.0, semantic_fn_intent_classified: 0, semantic_fn_low_confidence: 0, semantic_fn_intent_coverage: 1.0, semantic_fn_low_confidence_rate: 0.0, structural_invariant_coverage: StructuralInvariantCoverage { score: 1.0, ..StructuralInvariantCoverage::default() }, tlog_delta_signals: TlogDeltaSignals { score: 1.0, improvement_measurement_score: 1.0, improvement_validation_score: 1.0, improvement_effectiveness_score: 1.0, recovery_effectiveness_score: 1.0, ..TlogDeltaSignals::default() } }
+        EvalInput { objectives_completed: 1, objectives_total: 1, violations: ViolationsReport { status: "ok".to_string(), summary: String::new(), violations: Vec::new() }, completed_tasks: 1, total_tasks: 1, open_issues: 0, repeated_open_issues: 0, high_priority_open_issues: 0, diagnostics: empty_diagnostics_report(), semantic_fn_total: 0, semantic_fn_with_any_error: 0, semantic_fn_error_rate: 0.0, semantic_fn_intent_classified: 0, semantic_fn_low_confidence: 0, semantic_fn_intent_coverage: 1.0, semantic_fn_low_confidence_rate: 0.0, structural_invariant_coverage: StructuralInvariantCoverage { score: 1.0, ..StructuralInvariantCoverage::default() }, blocker_class_coverage: BlockerClassCoverage::default(), tlog_delta_signals: TlogDeltaSignals { score: 1.0, improvement_measurement_score: 1.0, improvement_validation_score: 1.0, improvement_effectiveness_score: 1.0, recovery_effectiveness_score: 1.0, ..TlogDeltaSignals::default() } }
     }
 
     #[test]
@@ -1549,6 +1648,7 @@ mod tests {
             issue_health: 1.0,
             semantic_contract: 1.0,
             structural_invariant_coverage: 1.0,
+            blocker_class_coverage: 1.0,
             canonical_delta_health: 1.0,
             improvement_measurement: 1.0,
             improvement_validation: 1.0,
@@ -1671,6 +1771,57 @@ mod tests {
             last_validated_ms: 0,
         });
         assert!(safety_score(&violations) < no_violation_score);
+    }
+
+    #[test]
+    fn blocker_class_coverage_is_full_when_no_blockers() {
+        let blockers = crate::blockers::BlockersFile::default();
+        let coverage = compute_blocker_class_coverage(&blockers, "{}");
+        assert_eq!(coverage.distinct_classes, 0);
+        assert_eq!(coverage.covered_classes, 0);
+        assert!((coverage.score - 1.0).abs() < 0.000_001);
+        assert!(coverage.top_uncovered.is_none());
+    }
+
+    #[test]
+    fn blocker_class_coverage_detects_uncovered_and_covered_classes() {
+        use crate::blockers::BlockerRecord;
+        use crate::error_class::ErrorClass;
+        let blockers = crate::blockers::BlockersFile {
+            version: 1,
+            blockers: vec![
+                BlockerRecord {
+                    id: "blk-1".to_string(),
+                    error_class: ErrorClass::LlmTimeout,
+                    actor: "planner".to_string(),
+                    task_id: None,
+                    objective_id: None,
+                    summary: "timeout".to_string(),
+                    action_kind: "llm_request".to_string(),
+                    source: "action_result".to_string(),
+                    ts_ms: 1,
+                },
+                BlockerRecord {
+                    id: "blk-2".to_string(),
+                    error_class: ErrorClass::MissingTarget,
+                    actor: "executor".to_string(),
+                    task_id: None,
+                    objective_id: None,
+                    summary: "not found".to_string(),
+                    action_kind: "symbol_window".to_string(),
+                    source: "action_result".to_string(),
+                    ts_ms: 2,
+                },
+            ],
+        };
+        // Invariant text covers missing_target but not llm_timeout.
+        let invariant_text = r#"{"invariants":[{"predicate_text":"repeated missing_target","state_conditions":[{"key":"error","value":"missing_target"}]}]}"#;
+        let coverage = compute_blocker_class_coverage(&blockers, invariant_text);
+        assert_eq!(coverage.distinct_classes, 2);
+        assert_eq!(coverage.covered_classes, 1);
+        assert!((coverage.score - 0.5).abs() < 0.000_001);
+        assert_eq!(coverage.top_uncovered.as_deref(), Some("llm_timeout"));
+        assert!(coverage.uncovered_classes.contains(&"llm_timeout".to_string()));
     }
 
     #[test]
@@ -1986,6 +2137,10 @@ mod tests {
                 recovery_loop_breaks: 0,
                 recovery_regressions: 0,
                 recovery_measurement_points: 0,
+                blocker_distinct_classes: 0,
+                blocker_covered_classes: 0,
+                blocker_top_uncovered: String::new(),
+                blocker_class_coverage: 1.0,
                 tlog_lag_total_ms: 0,
                 tlog_actionable_lag_total_ms: 0,
                 tlog_dominant_actionable_lag_kind: String::new(),
@@ -2125,6 +2280,10 @@ mod tests {
                     recovery_loop_breaks: 0,
                     recovery_regressions: 0,
                     recovery_measurement_points: 0,
+                    blocker_distinct_classes: 0,
+                    blocker_covered_classes: 0,
+                    blocker_top_uncovered: String::new(),
+                    blocker_class_coverage: 1.0,
                     tlog_lag_total_ms: 0,
                     tlog_actionable_lag_total_ms: 0,
                     tlog_dominant_actionable_lag_kind: String::new(),

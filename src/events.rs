@@ -582,6 +582,14 @@ pub enum EffectEvent {
         tlog_prompt_truncation_count: usize,
         #[serde(default)]
         tlog_prompt_truncation_dropped_bytes: u64,
+        #[serde(default)]
+        blocker_distinct_classes: usize,
+        #[serde(default)]
+        blocker_covered_classes: usize,
+        #[serde(default)]
+        blocker_top_uncovered: String,
+        #[serde(default)]
+        blocker_class_coverage: f64,
     },
     /// Last completed action snapshot used to resume after process restarts.
     PostRestartResultRecorded {

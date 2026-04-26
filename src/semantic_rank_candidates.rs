@@ -407,49 +407,11 @@ pub fn run_with_options(
         graph.meta.schema_version
     );
 
-    // ── path → node_id map ────────────────────────────────────────────────────
-    let path_to_id: HashMap<&str, &str> = graph
-        .nodes
-        .iter()
-        .map(|(id, n)| (n.path.as_str(), id.as_str()))
-        .collect();
-
-    // ── per-node effect flags (keyed by node_id) ──────────────────────────────
-    let mut effect_map: HashMap<&str, EffectFlags> = HashMap::new();
-    for edge in &graph.edges {
-        let f = effect_map.entry(edge.from.as_str()).or_default();
-        match edge.relation.as_str() {
-            "ReadsState" | "ReadsArtifact" => {
-                f.reads = true;
-            }
-            "WritesState" | "WritesArtifact" => {
-                f.writes = true;
-            }
-            "SpawnsProcess" => {
-                f.process = true;
-            }
-            "UsesNetwork" => {
-                f.network = true;
-            }
-            "TransitionsState" => {
-                f.transitions = true;
-            }
-            _ => {}
-        }
-    }
+    let path_to_id = build_path_to_id_map(&graph);
+    let effect_map = build_effect_map(&graph);
     let empty = EffectFlags::default();
 
-    // ── group pairs by owner path ─────────────────────────────────────────────
-    let mut by_owner: HashMap<&str, Vec<&RedundantPathPair>> = HashMap::new();
-    for pair in &graph.redundant_paths {
-        if !is_actionable_redundant_path_pair(pair) {
-            continue;
-        }
-        by_owner
-            .entry(pair.path_a.owner.as_str())
-            .or_default()
-            .push(pair);
-    }
+    let by_owner = group_actionable_pairs_by_owner(&graph);
 
     // ── score each owner ──────────────────────────────────────────────────────
     let mut candidates: Vec<Candidate> = Vec::new();
@@ -581,6 +543,43 @@ fn summarize_redundant_path_pairs(pairs: &[&RedundantPathPair]) -> Vec<PairSumma
             }
         })
         .collect()
+}
+
+fn build_path_to_id_map(graph: &CrateGraph) -> HashMap<&str, &str> {
+    graph
+        .nodes
+        .iter()
+        .map(|(id, node)| (node.path.as_str(), id.as_str()))
+        .collect()
+}
+
+fn build_effect_map(graph: &CrateGraph) -> HashMap<&str, EffectFlags> {
+    let mut effect_map: HashMap<&str, EffectFlags> = HashMap::new();
+    for edge in &graph.edges {
+        let flags = effect_map.entry(edge.from.as_str()).or_default();
+        match edge.relation.as_str() {
+            "ReadsState" | "ReadsArtifact" => flags.reads = true,
+            "WritesState" | "WritesArtifact" => flags.writes = true,
+            "SpawnsProcess" => flags.process = true,
+            "UsesNetwork" => flags.network = true,
+            "TransitionsState" => flags.transitions = true,
+            _ => {}
+        }
+    }
+    effect_map
+}
+
+fn group_actionable_pairs_by_owner(graph: &CrateGraph) -> HashMap<&str, Vec<&RedundantPathPair>> {
+    let mut by_owner: HashMap<&str, Vec<&RedundantPathPair>> = HashMap::new();
+    for pair in &graph.redundant_paths {
+        if is_actionable_redundant_path_pair(pair) {
+            by_owner
+                .entry(pair.path_a.owner.as_str())
+                .or_default()
+                .push(pair);
+        }
+    }
+    by_owner
 }
 
 fn build_candidates_output(

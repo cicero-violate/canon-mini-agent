@@ -1821,6 +1821,22 @@ fn build_complexity_report(
         "missing_structural_invariant_kinds".into(),
         json!(&eval.structural_invariant_coverage.missing),
     );
+    eval_report.insert(
+        "blocker_class_coverage".into(),
+        json!(eval.vector.blocker_class_coverage),
+    );
+    eval_report.insert(
+        "blocker_distinct_classes".into(),
+        json!(eval.blocker_class_coverage.distinct_classes),
+    );
+    eval_report.insert(
+        "blocker_covered_classes".into(),
+        json!(eval.blocker_class_coverage.covered_classes),
+    );
+    eval_report.insert(
+        "blocker_top_uncovered".into(),
+        json!(eval.blocker_class_coverage.top_uncovered.as_deref().unwrap_or("")),
+    );
     eval_report.insert("semantic_fn_total".into(), json!(eval.semantic_fn_total));
     eval_report.insert(
         "semantic_fn_with_any_error".into(),

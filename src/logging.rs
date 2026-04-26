@@ -195,14 +195,7 @@ fn compact_json(value: Value) -> Option<Value> {
     while let Some(frame) = frames.pop() {
         match frame {
             Frame::Visit(Value::Null) => results.push(None),
-            Frame::Visit(Value::String(text)) => {
-                let text = text.trim().to_string();
-                if text.is_empty() {
-                    results.push(None);
-                } else {
-                    results.push(Some(Value::String(text)));
-                }
-            }
+            Frame::Visit(Value::String(text)) => results.push(compact_json_string(text)),
             Frame::Visit(Value::Array(items)) => {
                 let len = items.len();
                 frames.push(Frame::FinishArray(len));
@@ -234,6 +227,15 @@ fn compact_json(value: Value) -> Option<Value> {
     }
 
     results.pop().flatten()
+}
+
+fn compact_json_string(text: String) -> Option<Value> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(Value::String(text))
+    }
 }
 
 fn compact_json_finish_array(results: &mut Vec<Option<Value>>, len: usize) -> Option<Value> {

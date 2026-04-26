@@ -133,8 +133,25 @@ pub(super) fn ensure_workspace_artifact_baseline(
         .map(|existing| existing.trim().is_empty())
         .unwrap_or(true);
 
-    migrate_projection_and_track(
+    ensure_legacy_projection_migrations(workspace, &mut created)?;
+
+    write_workspace_baseline_files(workspace, &mut created)?;
+
+    push_created_path(
         &mut created,
+        "agent_state/tlog.ndjson",
+        touch_file_if_missing_or_empty(&tlog_path)? || tlog_missing_or_empty_before,
+    );
+
+    ensure_lessons_baseline(workspace, &mut created)?;
+    ensure_planner_projection_baseline(workspace, planner_projection_path, &mut created)?;
+
+    Ok(created)
+}
+
+fn ensure_legacy_projection_migrations(workspace: &Path, created: &mut Vec<String>) -> Result<()> {
+    migrate_projection_and_track(
+        created,
         workspace,
         "PLAN.json",
         MASTER_PLAN_FILE,
@@ -143,7 +160,7 @@ pub(super) fn ensure_workspace_artifact_baseline(
     )?;
 
     migrate_projection_and_track(
-        &mut created,
+        created,
         workspace,
         "VIOLATIONS.json",
         VIOLATIONS_FILE,
@@ -152,16 +169,19 @@ pub(super) fn ensure_workspace_artifact_baseline(
     )?;
 
     migrate_projection_and_track(
-        &mut created,
+        created,
         workspace,
         "ISSUES.json",
         ISSUES_FILE,
         ISSUES_FILE,
         "baseline_issues_legacy_migration",
     )?;
+    Ok(())
+}
 
+fn write_workspace_baseline_files(workspace: &Path, created: &mut Vec<String>) -> Result<()> {
     write_json_baseline_and_track(
-        &mut created,
+        created,
         workspace,
         &workspace.join(MASTER_PLAN_FILE),
         MASTER_PLAN_FILE,
@@ -176,7 +196,7 @@ pub(super) fn ensure_workspace_artifact_baseline(
     )?;
 
     write_json_baseline_and_track(
-        &mut created,
+        created,
         workspace,
         &workspace.join(VIOLATIONS_FILE),
         VIOLATIONS_FILE,
@@ -189,7 +209,7 @@ pub(super) fn ensure_workspace_artifact_baseline(
     )?;
 
     write_json_baseline_and_track(
-        &mut created,
+        created,
         workspace,
         &workspace.join(ISSUES_FILE),
         ISSUES_FILE,
@@ -201,7 +221,7 @@ pub(super) fn ensure_workspace_artifact_baseline(
     )?;
 
     write_json_baseline_and_track(
-        &mut created,
+        created,
         workspace,
         &workspace.join("agent_state/blockers.json"),
         "agent_state/blockers.json",
@@ -211,17 +231,7 @@ pub(super) fn ensure_workspace_artifact_baseline(
             blockers: Vec::new(),
         },
     )?;
-
-    push_created_path(
-        &mut created,
-        "agent_state/tlog.ndjson",
-        touch_file_if_missing_or_empty(&tlog_path)? || tlog_missing_or_empty_before,
-    );
-
-    ensure_lessons_baseline(workspace, &mut created)?;
-    ensure_planner_projection_baseline(workspace, planner_projection_path, &mut created)?;
-
-    Ok(created)
+    Ok(())
 }
 
 pub(super) fn artifact_file_ready(path: &Path) -> bool {
