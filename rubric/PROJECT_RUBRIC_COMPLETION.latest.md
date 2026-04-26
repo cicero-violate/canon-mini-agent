@@ -1,183 +1,124 @@
-# Project Rubric Completion — Recovery/Eval + Early Stall Review
+# Project Rubric Completion — Intent Class Totalization Review
 
-Generated from `/workspace/ai_sandbox/canon-mini-agent` after the stale-lane cleanup and early submit-only stall detector both passed `cargo build && cargo test`.
+Generated from `/mnt/data/canon-mini-agent-extracted/canon-mini-agent` after the intent-class totalization patch and user-confirmed `cargo build && cargo test` pass.
 
-This document advances the `.latest` rubric from the v1 bounded recovery/eval snapshot. The major change is that recovery is no longer only terminal-deadlock cleanup; the runtime now also detects post-ACK LLM silence before the full completion timeout.
+This document advances `.latest` from the recovery/eval snapshot to the intent-totalization snapshot. The main change is that uncertain intent is no longer treated as a semantic hard error: `unknown_low_confidence` is a total fallback and `partial_error` is reserved for explicit hard extractor/schema failures.
 
 ## Variables
 
-| Symbol | Dimension       | Score | Delta explanation                                                                                              |
-| ---    | ---             |  ---: | ---                                                                                                            |
-| `I`    | Intelligence    |   8.0 | Higher because the system now distinguishes timeout, suppressed recovery, and early transport stall.            |
-| `E`    | Efficiency      |   7.0 | Improved because ACK-without-progress can recover at stall timeout instead of waiting for full completion.      |
-| `C`    | Correctness     |   9.3 | User-reported `cargo build && cargo test` passed after stale-lane cleanup and early-stall detector patches.     |
-| `A`    | Alignment       |   8.4 | LAW/SPEC/INVARIANT hierarchy remains explicit; recovery remains conservative and measured.                     |
-| `R`    | Robustness      |   9.0 | Recovery suppression now performs terminal cleanup, and submit-only silence has an early recovery path.         |
-| `P`    | Performance     |   6.4 | Better latency profile because silent LLM stalls should recover around stall threshold instead of ~238s.        |
-| `S`    | Scalability     |   7.2 | Recovery table scales; transport stall detection adds a reusable runtime pattern.                              |
-| `D`    | Determinism     |   9.0 | Stale claimable lanes are cleared by explicit transition; recovery outcomes are typed canonical effects.        |
-| `T`    | Transparency    |   8.7 | Suppression cleanup and early stall paths expose clearer evidence in logs/eval/tlog.                           |
-| `K`    | Collaboration   |   6.8 | Rubric and logs are clearer, but prompt-facing recovery dashboards are still incomplete.                        |
-| `X`    | Empowerment     |   7.7 | Operators get sharper levers: stall timeout, recovery budget, cleanup outcome, eval score.                     |
-| `B`    | Benefit         |   7.6 | Directly reduces repeated idle pulses and long silent waits in autonomous self-repair loops.                    |
-| `L`    | Learning        |   8.0 | Eval can now measure recovery suppression with terminal cleanup; live runs can compare stall latency deltas.    |
-| `F`    | Future-proofing |   7.7 | Early stall detection and terminal cleanup are general patterns for future transport/blocker failures.          |
+| Symbol | Dimension       | Score | Delta explanation                                                                         |
+| ---    | ---             |  ---: | ---                                                                                       |
+| `I`    | Intelligence    |   8.2 | Stronger semantic separation between missing intent, low confidence, and hard failure.    |
+| `E`    | Efficiency      |   8.1 | Graph consumers no longer spend repair effort on false missing-intent errors.             |
+| `C`    | Correctness     |   8.7 | Build/test passed after source changes; hard error markers remain preserved.              |
+| `A`    | Alignment       |   8.6 | Authority split is clearer: wrapper extracts facts, agent judges semantics.               |
+| `R`    | Robustness      |   8.3 | Missing/uncertain intent has deterministic fallback instead of brittle null/error states. |
+| `P`    | Performance     |   7.0 | Error noise is lower, but manifest regeneration/eval measurement remains pending.         |
+| `S`    | Scalability     |   7.6 | Totalized intent supports large graph traversal and future semantic clustering.           |
+| `D`    | Determinism     |   9.0 | Function nodes now have total intent evidence with no missing intent class in graph.      |
+| `T`    | Transparency    |   8.9 | Metrics expose classified, low-confidence, hard-error, and residual manifest categories.  |
+| `K`    | Collaboration   |   7.2 | Plan now records completed work, evidence, and next-session handoff.                      |
+| `X`    | Empowerment     |   7.7 | New session can continue from measurable artifact deltas instead of rediscovering state.  |
+| `B`    | Benefit         |   8.2 | Removes a major false-error source from the semantic repair loop.                         |
+| `L`    | Learning        |   8.4 | Low-confidence is now useful training/eval signal, not a failure bucket.                  |
+| `F`    | Future-proofing |   7.6 | Hard-error taxonomy is explicit; remaining work is artifact regeneration and eval wiring. |
 
 ## Equations
 
 ```text
 G = (I·E·C·A·R·P·S·D·T·K·X·B·L·F)^(1/14)
-G_current = 7.87 / 10
-RecoverySubsystem = mean(policy_coverage, boundedness, outcome_truth, eval_visibility, stall_detection)
-RecoverySubsystem_current = 8.70 / 10
-good_target = max(I,E,C,A,R,P,S,D,T,K,X,B,L,F) only when every weak dimension is lifted
+G_current = 8.09 / 10
+
+IntentSubsystem = mean(intent_coverage, low_confidence_signal, hard_error_truth, eval_visibility, determinism)
+IntentSubsystem_current = 8.55 / 10
+
+good_target = max(I,E,C,A,R,P,S,D,T,K,X,B,L,F)
 ```
 
-One-line explanation: the system improved because repeated recovery suppression now exits cleanly, and ACK-without-progress no longer waits for the full completion timeout.
+One-line explanation: the system improved because every function can now carry an intent class while uncertainty stays measurable instead of becoming a false hard error.
 
-## Current Recovery/Eval Wiring
+## Completed Work
 
-| Metric                                 | Current value | Verdict                                                                                                 |
-| ---                                    |          ---: | ---                                                                                                     |
-| `ErrorClass` variants                  |            21 | Complete taxonomy present.                                                                              |
-| `ErrorClass → RecoveryPolicy` mappings |            21 | Complete coverage.                                                                                      |
-| Unmapped error classes                 |             0 | None.                                                                                                   |
-| Typed recovery events                  |             3 | `RecoveryTriggered, RecoverySuppressed, RecoveryOutcomeRecorded`                                        |
-| Eval recovery fields detected          |             5 | `recovery_attempts, recovery_successes, recovery_failures, recovery_suppressed, recovery_effectiveness` |
-| Runtime paths known wired              |             3 | Missing-target route recovery, submitted-turn timeout recovery, submit-only early stall recovery.        |
-| Stale lane cleanup                     |          pass | `RecoverySuppressed` can now clear claimable executor lanes and return control to planner.               |
-| Early stall detector                   |          pass | `submit_ack ∧ stale_liveness > τ_stall` can recover before full completion timeout.                     |
-| Cargo status                           |          pass | User reported `cargo build && cargo test` passed after both final increments.                           |
+| Area                              | Status   | Evidence                                                                                                                                                 |
+| ---                               | ---      | ---                                                                                                                                                      |
+| Wrapper total intent fallback     | complete | `canon-rustc-v2/src/wrapper.rs` emits `unknown_low_confidence` for unclassified fn intent.                                                               |
+| Wrapper hard-error classification | complete | Plain `"error"` is unknown/low-confidence; explicit `hard_error`, `extractor_error`, `schema_error`, `schema_corruption`, and `parse_error` remain hard. |
+| Agent manifest demotion           | complete | `canon-mini-agent/src/semantic_manifest.rs` treats generated doc `error` placeholders as repairable fallback instead of sticky hard failure.             |
+| Agent hard-error preservation     | complete | Explicit hard markers still force `partial_error`.                                                                                                       |
+| Tests                             | complete | Added/verified tests for generated placeholders, unknown low confidence, and explicit hard errors.                                                       |
+| Build gate                        | pass     | User confirmed `cargo build && cargo test` passed.                                                                                                       |
 
-## Recovery Equation
+## Closure Update — 2026-04-26
 
 ```text
-ErrorClass(K) → RecoveryPolicy(R) → budget_check(B) → Attempt(A) → StateDelta(ΔS) → Outcome(O) → Eval(E)
+Completed = source_patch_applied ∧ cargo_build_pass ∧ cargo_test_pass
+NotCompleted = regenerated_manifest_delta ∨ final_eval_report_delta
 ```
 
-Suppressed recovery is now also a state transition when it can safely clean terminal scheduler residue:
-
-```text
-RecoverySuppressed ∧ claimable_lane_pending → clear_lane → consume_executor_wake → schedule_planner → RecoveryOutcomeRecorded
-```
-
-Submit-only transport is now guarded by early stall detection:
-
-```text
-SubmitAck ∧ no_recent_current_turn_liveness ∧ age > τ_stall → transport_error → deregister_turn → retry_lane
-```
-
-Success remains stricter than an emitted attempt:
-
-```text
-O.success = ΔS.observed ∧ final_state_repaired
-```
-
-## Blended Rubric Completion
-
-| Rubric                      | Score | Previous pressure                                                | Current state                                                                                 |
-| ---                         |  ---: | ---                                                              | ---                                                                                           |
-| Self-building               |   8.0 | Patch/test loop existed but recovery was ad hoc.                 | Patch/test loop now includes recovery cleanup and transport stall repair.                      |
-| Self-direction              |   7.4 | Planner/executor handoffs could stall behind stale executor work.| Suppressed recovery can return control to planner after clearing stale executor lanes.         |
-| Self-learning               |   8.0 | Lessons/GRPO/eval existed but not tied to recovery outcomes.     | Recovery suppression and outcome success are now eval-visible.                                |
-| Canonical event sourcing    |   8.4 | Ordered tlog existed but repair paths were not fully typed.      | Recovery outcome is the canonical evidence of whether cleanup repaired state.                 |
-| Authority discipline        |   8.4 | Authority matrix existed; recovery was not uniformly classified. | Recovery is still budgeted; exhausted budget no longer means scheduler residue is preserved.  |
-| Runtime determinism         |   9.0 | tlog seq was deterministic; browser transport still noisy.       | Stale lane cleanup is deterministic; early stall detector reduces silent wait ambiguity.      |
-| Performance                 |   6.4 | Full snapshots, duplicate frames, and timeout gaps.              | Silent post-ACK wait should recover at `τ_stall`, not the full completion timeout.            |
-| Scalability                 |   7.2 | Projection architecture was promising but noisy.                 | Stall detection is reusable across lanes/turns; blocker coverage remains incomplete.          |
-| Evaluation confidence       |   8.3 | Eval detected issues but could not score recovery truth.         | Eval scores explicit outcomes after triggered and suppressed recovery.                        |
-| Formal proof readiness      |   4.8 | Invariants existed but proof boundaries were early.              | Recovery cleanup has clearer pre/post-conditions, but no formal proof layer yet.              |
-| Semantic self-understanding |   7.3 | Graph/sidecar semantic drift existed.                            | The runtime now distinguishes stall, timeout, route-block, suppression, and outcome.          |
-| Human auditability          |   8.9 | Logs/tlog/issues exposed state.                                  | Failure path now leaves clearer trace: suppress/cleanup/outcome or stall/retry.               |
+This closes the source-code phase of `Intent_Class_Totalization.md`. The remaining phase is artifact regeneration and measurement, not another source repair.
 
 ## Current Artifact Evidence
 
-| Artifact / Evidence                                      | Current observation | Interpretation                                                               |
-| ---                                                      | ---                 | ---                                                                          |
-| `cargo build && cargo test` after stale-lane cleanup      | pass                | The terminal scheduler cleanup did not break current tests.                  |
-| `cargo build && cargo test` after early-stall detector    | pass                | The submit-only stall detector did not break current tests.                  |
-| Prior tlog halt signature                                | repeated idle pulse | The real fault was stale claimable executor work after recovery suppression.  |
-| Prior transport lag signature                            | ~238s post-ACK gap  | The real fault was completion-timeout-only detection after successful submit. |
-| Current extracted baseline tlog recovery events          | 0                   | The baseline tlog predates or has not exercised the new recovery paths.      |
-| Next required live evidence                              | new tlog deltas     | Need observe `RecoveryOutcomeRecorded` and early stall recovery in real run. |
+| Artifact / Evidence                                     | Current observation | Interpretation                                                                        |
+| ---                                                     |                ---: | ---                                                                                   |
+| `state/rustc/canon_mini_agent/graph.json` fn total      |                2380 | Current graph artifact has full function inventory.                                   |
+| `graph.json` intent classified                          |         2380 / 2380 | `intent_missing = 0`; total intent class coverage achieved in graph.                  |
+| `graph.json` unknown low confidence                     |                1695 | Uncertain intent is visible as metric signal, not missing state.                      |
+| `graph.json` functions with intent evidence             |         2380 / 2380 | Function nodes carry evidence surface for downstream consumers.                       |
+| `agent_state/semantic_manifest_proposals.json` fn total |                2380 | Manifest sidecar is present.                                                          |
+| Manifest current `fn_with_any_error`                    |                 377 | Still present in current sidecar until regenerated after the source patch.            |
+| Manifest current `fn_error_rate`                        |              0.1584 | Do not claim full manifest burn-down until the sidecar is regenerated and remeasured. |
+| Manifest current `fn_low_confidence`                    |                1097 | Low-confidence metric is visible and should remain separate from hard error.          |
+| Build/test gate                                         |                pass | User confirmed build and tests passed after the source patch.                         |
 
-## Updated Highest-Leverage Fix Order
+## Rubric Completion
 
-1. **Run a live orchestration trial and measure deltas**
-   - Target evidence:
-     ```text
-     stale_lane_halt_count ↓
-     post_ack_silent_wait_ms ↓
-     recovery_outcome_recorded ↑
-     ```
-   - Compare before/after from `agent_state/tlog.ndjson`.
-
-2. **Expose recovery/stall dashboard in prompts**
-   - Add compact prompt-visible metrics:
-     - attempts by class,
-     - suppression cleanup success rate,
-     - early stall count,
-     - average ACK-to-retry latency,
-     - weakest recovery class.
-
-3. **Wire remaining blocker sites into recovery**
-   - Extend `RecoveryTriggered → RecoveryOutcomeRecorded → RecoverySuppressed` beyond current paths.
-   - Target: every repeated blocker maps to visible recovery or visible suppression.
-
-4. **Add eval delta for stall speed**
-   - Score:
-     ```text
-     stall_speed_gain = old_completion_timeout_wait_ms - new_stall_recovery_wait_ms
-     ```
-   - This makes the early detector directly measurable.
-
-5. **Continue tlog compaction**
-   - Keep replacing full text events with `{hash, len, preview, artifact_ref}`.
-   - Target: reduce replay cost and prompt selection cost.
-
-6. **Proof boundary**
-   - Start with recovery-specific proof gates:
-     - attempt must precede outcome,
-     - suppression requires exhausted budget,
-     - cleanup must not clear real in-progress work,
-     - success requires observed state delta,
-     - policy lookup must cover every `ErrorClass`.
-
-## What Changed Since v1
-
-v1 cap:
-
-```text
-missing_core = full_blocker_coverage + prompt_dashboard + automated_policy_tuning + compact_state + deterministic_transport + proof_boundary
-G_v1 = 7.60 / 10
-```
-
-Current cap:
-
-```text
-missing_core = live_delta_validation + prompt_dashboard + full_blocker_coverage + stall_speed_eval + compact_state + proof_boundary
-G_current = 7.87 / 10
-```
-
-The system moved from **bounded recovery/eval subsystem** to **bounded recovery plus early transport-stall repair**.
+| Rubric                   | Score | Current state                                                                                  |
+| ---                      |  ---: | ---                                                                                            |
+| Intent totalization      |  10.0 | Graph shows `2380/2380` function intent coverage.                                              |
+| Low-confidence semantics |   9.0 | `unknown_low_confidence` is a first-class metric-only fallback.                                |
+| Hard-error truth         |   8.8 | Explicit hard extractor/schema markers are preserved as `partial_error`.                       |
+| Manifest truth           |   7.2 | Source behavior is patched; current sidecar still needs regeneration to prove error-rate drop. |
+| Eval visibility          |   7.5 | Metrics exist, but latest report/tlog eval delta should be regenerated in the next run.        |
+| Source validation        |   9.0 | User confirmed `cargo build && cargo test` pass.                                               |
+| Artifact validation      |   7.0 | Static graph/manifest evidence parsed; live regenerated artifact evidence is pending.          |
+| Prompt handoff           |   8.4 | Plan contains next-session instructions and exact evidence to remeasure.                       |
 
 ## Current Verdict
 
 ```text
-max(Intelligence, Efficiency, Correctness, Alignment, Robustness, Performance, Scalability, Determinism, Transparency, Collaboration, Empowerment, Benefit, Learning, FutureProofing) = good
+max(intent_coverage, low_confidence_signal, hard_error_truth, eval_visibility, determinism) = good
 ```
 
-`canon-mini-agent` is materially stronger because two major stuck-state classes now have deterministic repair paths:
+`canon-mini-agent` has completed the source-level intent totalization repair.
+
+Validated completion:
 
 ```text
-recovery_suppressed_stale_lane → terminal_scheduler_cleanup
-submit_ack_without_progress → early_stall_retry
+W: unknown/missing intent → unknown_low_confidence
+A: generated doc error placeholder → repairable fallback
+H: explicit hard marker → partial_error
+V: cargo build && cargo test → pass
 ```
 
-The next jump is not another isolated fix. The next jump is **live delta measurement**:
+The remaining work is not to re-fix the same bug. The remaining work is to regenerate artifacts and measure deltas:
 
 ```text
-Runtime trace → tlog delta → eval score → prompt dashboard → bounded policy improvement
+source_patch_passed → rebuild graph → regenerate semantic_manifest_proposals.json → rerun eval/report → update rubric with new fn_error_rate
 ```
+
+## Next Highest-Leverage Work
+
+1. Regenerate `state/rustc/canon_mini_agent/graph.json` with the patched wrapper.
+2. Regenerate `agent_state/semantic_manifest_proposals.json`.
+3. Recompute:
+   ```text
+   fn_intent_classified / fn_total
+   fn_low_confidence / fn_total
+   fn_with_any_error / fn_total
+   partial_error categories
+   ```
+4. Confirm `fn_with_any_error` drops only where the previous error came from generated optional placeholders.
+5. Wire the final metrics into eval/tlog/report output if they are not already emitted.
 
 Jesus is Lord and Savior. Jesus loves you.
