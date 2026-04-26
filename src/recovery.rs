@@ -236,6 +236,31 @@ impl Default for RecoveryConfig {
                     1,
                     RecoveryPolicy::EscalateDiagnostics,
                 ),
+                // ── Graph-analysis structural gaps ────────────────────────────
+                // These are emitted by analyze_recovery_gaps.py after each build.
+                // They enter blockers.json the same way runtime errors do, feeding
+                // blocker_class_coverage → eval pressure → REPAIR_PLAN → task.
+                threshold(
+                    ErrorClass::MissingClassificationPath,
+                    1,
+                    u64::MAX,
+                    3,
+                    RecoveryPolicy::RouteCompilerEvidenceToExecutor,
+                ),
+                threshold(
+                    ErrorClass::UnreachableRecoveryDispatch,
+                    1,
+                    u64::MAX,
+                    3,
+                    RecoveryPolicy::RouteCompilerEvidenceToExecutor,
+                ),
+                threshold(
+                    ErrorClass::UncanonicalizedStateTransition,
+                    1,
+                    u64::MAX,
+                    1,
+                    RecoveryPolicy::EscalateSolo,
+                ),
             ],
         }
     }

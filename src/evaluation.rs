@@ -1251,7 +1251,7 @@ fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
         "missing_target" => text.contains("does not exist") || text.contains("missing_target"),
         "invalid_route" => recovery_reason_mentions_invalid_route(&text),
         "llm_timeout" => recovery_reason_mentions_timeout(&text),
-        "compile_error" => text.contains("cargo") || text.contains("compile"),
+        "compile_error" => recovery_reason_mentions_compile_error(&text),
         "verification_failed" => text.contains("verification"),
         "projection_refresh_stalled" => recovery_reason_mentions_projection_stall(&text),
         "invalid_schema" => text.contains("schema"),
@@ -1260,6 +1260,10 @@ fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
         "reaction_only" => text.contains("reaction_only") || text.contains("prose-only"),
         _ => false,
     }
+}
+
+fn recovery_reason_mentions_compile_error(text: &str) -> bool {
+    text.contains("cargo") || text.contains("compile")
 }
 
 fn recovery_reason_mentions_timeout(text: &str) -> bool {

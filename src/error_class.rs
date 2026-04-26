@@ -71,10 +71,22 @@ pub enum ErrorClass {
     ReactionOnly,
     /// Anything that does not fit the above classes.
     Unknown,
+    /// Graph analysis: a route_gate or validation_gate function has no reachable
+    /// path to classify_result / classify_blocker_summary in the call graph.
+    /// Errors it generates are silently lost — they never enter blockers.json.
+    MissingClassificationPath,
+    /// Graph analysis: a repair_or_initialize function has no reachable path to
+    /// the canonical recovery dispatch (apply_recovery_decision).
+    /// Recovery is ad-hoc and not tracked by eval.
+    UnreachableRecoveryDispatch,
+    /// Graph analysis: a function has TransitionsState edges but is not reachable
+    /// from canonical_writer::apply in the call graph.
+    /// State mutation is bypassing the canonical writer — potential loophole.
+    UncanonicalizedStateTransition,
 }
 
 impl ErrorClass {
-    pub const ALL: [ErrorClass; 22] = [
+    pub const ALL: [ErrorClass; 25] = [
         ErrorClass::SecondMutationPath,
         ErrorClass::RuntimeControlBypass,
         ErrorClass::UncanonicalizedRecoveryPath,
@@ -97,6 +109,9 @@ impl ErrorClass {
         ErrorClass::LivelockDetected,
         ErrorClass::ReactionOnly,
         ErrorClass::Unknown,
+        ErrorClass::MissingClassificationPath,
+        ErrorClass::UnreachableRecoveryDispatch,
+        ErrorClass::UncanonicalizedStateTransition,
     ];
 
     fn metadata(&self) -> (&'static str, &'static str) {
@@ -186,6 +201,18 @@ impl ErrorClass {
                 "LLM returned a prose-only response with no extractable JSON action block",
             ),
             ErrorClass::Unknown => ("unknown", "unclassified bad outcome"),
+            ErrorClass::MissingClassificationPath => (
+                "missing_classification_path",
+                "graph analysis: gate/validation function has no reachable classifier in call graph — errors are silently lost",
+            ),
+            ErrorClass::UnreachableRecoveryDispatch => (
+                "unreachable_recovery_dispatch",
+                "graph analysis: repair/recovery function has no path to canonical recovery dispatch — recovery is ad-hoc and untracked",
+            ),
+            ErrorClass::UncanonicalizedStateTransition => (
+                "uncanonicalized_state_transition",
+                "graph analysis: function transitions state without being reachable from canonical_writer::apply — structural loophole",
+            ),
         }
     }
 
