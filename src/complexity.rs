@@ -1835,6 +1835,14 @@ fn build_complexity_report(
         json!(eval.semantic_fn_intent_classified),
     );
     eval_report.insert(
+        "semantic_fn_totalized".into(),
+        json!(eval.semantic_fn_totalized),
+    );
+    eval_report.insert(
+        "semantic_fn_totalization_coverage".into(),
+        json!(eval.semantic_fn_totalization_coverage),
+    );
+    eval_report.insert(
         "semantic_fn_low_confidence".into(),
         json!(eval.semantic_fn_low_confidence),
     );
@@ -1845,6 +1853,26 @@ fn build_complexity_report(
     eval_report.insert(
         "semantic_fn_low_confidence_rate".into(),
         json!(eval.semantic_fn_low_confidence_rate),
+    );
+    eval_report.insert(
+        "eval_enforcement_passed".into(),
+        json!(eval.eval_enforcement.passed),
+    );
+    eval_report.insert(
+        "eval_enforcement_violation_count".into(),
+        json!(eval.eval_enforcement.violation_count),
+    );
+    eval_report.insert(
+        "eval_enforcement_violations".into(),
+        json!(&eval.eval_enforcement.violations),
+    );
+    eval_report.insert(
+        "eval_enforcement_warning_count".into(),
+        json!(eval.eval_enforcement.warning_count),
+    );
+    eval_report.insert(
+        "eval_enforcement_warnings".into(),
+        json!(&eval.eval_enforcement.warnings),
     );
     eval_report.insert(
         "diagnostics_repair_pressure".into(),
@@ -1901,6 +1929,14 @@ fn build_complexity_report(
     eval_report.insert(
         "last_executor_diff_payload_bytes".into(),
         json!(eval.tlog_delta_signals.last_executor_diff_payload_bytes),
+    );
+    eval_report.insert(
+        "tlog_prompt_truncation_count".into(),
+        json!(eval.tlog_delta_signals.prompt_truncations),
+    );
+    eval_report.insert(
+        "tlog_prompt_truncation_dropped_bytes".into(),
+        json!(eval.tlog_delta_signals.prompt_truncation_dropped_bytes),
     );
     eval_report.insert(
         "supervisor_restart_requests".into(),

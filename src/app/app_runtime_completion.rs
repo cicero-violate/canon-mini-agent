@@ -522,6 +522,10 @@ pub(super) fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &
 
 pub(super) fn executor_blocker_handoff_message(payload: Value) -> Value {
     let (observation, rationale) = executor_blocker_handoff_explanation();
+    executor_blocker_handoff_message_value(observation, rationale, payload)
+}
+
+fn executor_blocker_handoff_message_value(observation: &str, rationale: &str, payload: Value) -> Value {
     json!({
         "action": "message",
         "from": "executor",
@@ -670,22 +674,28 @@ pub(super) fn executor_activity_snapshot(
     let canonical_work = executor_has_canonical_work(state, &lane_flags);
     let flagged_busy = state.phase == "executor"
         && (lane_flags.submit_flagged || lane_flags.prompt_flagged || lane_flags.in_progress);
-    let inflight = !rt.submitted_turns.is_empty()
-        || !rt.executor_submit_inflight.is_empty()
-        || lane_flags.submit_flagged;
-    let in_progress = lane_flags.in_progress
-        || lane_flags.submit_flagged
-        || lane_flags.prompt_flagged
-        || runtime_busy;
 
     ExecutorActivitySnapshot {
         runtime_busy,
         canonical_work,
         flagged_busy,
-        inflight,
+        inflight: executor_snapshot_inflight(rt, &lane_flags),
         lane_pending: lane_flags.pending,
-        in_progress,
+        in_progress: executor_snapshot_in_progress(&lane_flags, runtime_busy),
     }
+}
+
+fn executor_snapshot_inflight(rt: &RuntimeState, lane_flags: &ExecutorLaneActivityFlags) -> bool {
+    !rt.submitted_turns.is_empty()
+        || !rt.executor_submit_inflight.is_empty()
+        || lane_flags.submit_flagged
+}
+
+fn executor_snapshot_in_progress(
+    lane_flags: &ExecutorLaneActivityFlags,
+    runtime_busy: bool,
+) -> bool {
+    lane_flags.in_progress || lane_flags.submit_flagged || lane_flags.prompt_flagged || runtime_busy
 }
 
 fn executor_runtime_busy(

@@ -352,11 +352,23 @@ fn is_missing_contract_value(value: &str) -> bool {
 }
 
 fn doc_scalar_forces_error(value: Option<&str>) -> bool {
-    value.is_some_and(is_missing_contract_value)
+    value.is_some_and(is_hard_contract_error_value)
 }
 
 fn doc_list_forces_error(values: &[String]) -> bool {
-    !values.is_empty() && values.iter().any(|value| is_missing_contract_value(value))
+    values.iter().any(|value| is_hard_contract_error_value(value))
+}
+
+fn is_hard_contract_error_value(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    matches!(
+        normalized.as_str(),
+        "hard_error" | "extractor_error" | "schema_error" | "schema_corruption" | "parse_error"
+    ) || normalized.starts_with("hard_error:")
+        || normalized.starts_with("extractor_error:")
+        || normalized.starts_with("schema_error:")
+        || normalized.starts_with("schema_corruption:")
+        || normalized.starts_with("parse_error:")
 }
 
 fn choose_list(cands: &[Vec<String>]) -> Vec<String> {

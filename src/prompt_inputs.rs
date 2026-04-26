@@ -448,9 +448,57 @@ fn build_eval_header(workspace: &Path) -> String {
     let get_f64_or = |key: &str, default: f64| {
         eval.get(key).and_then(|v| v.as_f64()).unwrap_or(default)
     };
+    let get_bool = |key: &str| eval.get(key).and_then(|v| v.as_bool()).unwrap_or(false);
     let get_u64 = |key: &str| eval.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
     let get_str = |key: &str| eval.get(key).and_then(|v| v.as_str()).unwrap_or("");
     let overall = get_f64("overall_score");
+    let semantic_metrics = crate::semantic_contract::load_semantic_manifest_metrics(workspace);
+    let live_semantic_available = semantic_metrics.fn_total > 0;
+    let semantic_contract = if live_semantic_available {
+        semantic_metrics.score()
+    } else {
+        get_f64("semantic_contract")
+    };
+    let semantic_fn_total = if live_semantic_available {
+        semantic_metrics.fn_total as u64
+    } else {
+        get_u64("semantic_fn_total")
+    };
+    let semantic_fn_with_any_error = if live_semantic_available {
+        semantic_metrics.fn_with_any_error as u64
+    } else {
+        get_u64("semantic_fn_with_any_error")
+    };
+    let semantic_fn_error_rate = if live_semantic_available {
+        semantic_metrics.fn_error_rate
+    } else {
+        get_f64("semantic_fn_error_rate")
+    };
+    let semantic_fn_intent_classified = if live_semantic_available {
+        semantic_metrics.fn_intent_classified as u64
+    } else {
+        get_u64("semantic_fn_intent_classified")
+    };
+    let semantic_fn_low_confidence = if live_semantic_available {
+        semantic_metrics.fn_low_confidence as u64
+    } else {
+        get_u64("semantic_fn_low_confidence")
+    };
+    let semantic_fn_intent_coverage = if live_semantic_available {
+        semantic_metrics.fn_intent_coverage
+    } else {
+        get_f64("semantic_fn_intent_coverage")
+    };
+    let semantic_fn_low_confidence_rate = if live_semantic_available {
+        semantic_metrics.fn_low_confidence_rate
+    } else {
+        get_f64("semantic_fn_low_confidence_rate")
+    };
+    let semantic_fn_totalized = semantic_fn_intent_classified
+        .saturating_add(semantic_fn_low_confidence)
+        .min(semantic_fn_total);
+    let semantic_fn_totalization_coverage =
+        ratio(semantic_fn_totalized as usize, semantic_fn_total as usize);
     let objectives_ratio = live_done_total_ratio(workspace.join(OBJECTIVES_FILE), "objectives");
     let tasks_ratio = live_done_total_ratio(workspace.join(MASTER_PLAN_FILE), "tasks");
     let objective_progress = objectives_ratio
@@ -484,6 +532,7 @@ fn build_eval_header(workspace: &Path) -> String {
             "structural_invariant_coverage",
             get_f64("structural_invariant_coverage"),
         ),
+        ("semantic_contract", semantic_contract),
     ];
 
     let (weakest_name, weakest_val) = dims
@@ -493,6 +542,11 @@ fn build_eval_header(workspace: &Path) -> String {
         .unwrap_or(("unknown", 0.0));
 
     let directive = eval_score_directive(weakest_name);
+    let eval_gate = if get_bool("eval_enforcement_passed") {
+        "pass"
+    } else {
+        "fail"
+    };
 
     let objectives = objectives_ratio
         .map(|(done, total)| format!("{done}/{total}"))
@@ -514,6 +568,13 @@ fn build_eval_header(workspace: &Path) -> String {
     format!(
         "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \
 objectives={objectives}  tasks={tasks}\n\
+semantic_contract={semantic_contract:.3}  \
+semantic_errors={semantic_fn_with_any_error}/{semantic_fn_total}({semantic_fn_error_rate:.4})  \
+semantic_intent={semantic_fn_intent_classified}/{semantic_fn_total}({semantic_fn_intent_coverage:.4})  \
+semantic_totalized={semantic_fn_totalized}/{semantic_fn_total}({semantic_fn_totalization_coverage:.4})  \
+semantic_low_confidence={semantic_fn_low_confidence}({semantic_fn_low_confidence_rate:.4})\n\
+eval_gate={eval_gate}  violations={eval_violations}  warnings={eval_warnings}  \
+prompt_truncations={prompt_truncations}  truncation_dropped={truncation_dropped}B\n\
 lag_action={lag_kind}({lag_ms}ms)  payload={payload_kind}({payload_bytes}B)  \
 plan_payload={plan_payload_bytes}B  measured_improvements={measured}/{attempts}  \
 unmeasured={unmeasured}  validated_improvements={validated}/{attempts}  \
@@ -523,6 +584,10 @@ recovery={recovery_successes}/{recovery_attempts}  recovery_failed={recovery_fai
 recovery_suppressed={recovery_suppressed}\n\
 → To raise score: {directive}\n",
         lag_kind = get_str("tlog_dominant_actionable_lag_kind"),
+        eval_violations = get_u64("eval_enforcement_violation_count"),
+        eval_warnings = get_u64("eval_enforcement_warning_count"),
+        prompt_truncations = get_u64("tlog_prompt_truncation_count"),
+        truncation_dropped = get_u64("tlog_prompt_truncation_dropped_bytes"),
         lag_ms = get_u64("tlog_dominant_actionable_lag_kind_ms"),
         payload_kind = get_str("tlog_dominant_payload_kind"),
         payload_bytes = get_u64("tlog_dominant_payload_kind_bytes"),
@@ -562,6 +627,9 @@ fn eval_score_directive(weakest_name: &str) -> &'static str {
         }
         "structural_invariant_coverage" => {
             "implement source-code synthesis for missing graph-risk invariant candidates; do not patch enforced_invariants.json directly"
+        }
+        "semantic_contract" => {
+            "regenerate semantic artifacts and reduce hard semantic errors before treating optional uncertainty as failure"
         }
         _ => "address the highest-scored issues below",
     }
@@ -2652,6 +2720,68 @@ mod diagnostics_filter_tests {
         assert!(header.contains("tasks=1/4"));
         assert!(!header.contains("objectives=0/0"));
         assert!(!header.contains("tasks=0/0"));
+    }
+
+    #[test]
+    fn build_eval_header_uses_live_semantic_manifest_over_stale_report_metrics() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "canon-mini-agent-eval-header-live-semantic-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        fs::create_dir_all(workspace.join("agent_state/reports/complexity")).unwrap();
+
+        fs::write(
+            workspace.join("agent_state/reports/complexity/latest.json"),
+            r#"{
+  "eval": {
+    "overall_score": 0.500,
+    "objective_progress": 1.0,
+    "task_velocity": 1.0,
+    "issue_health": 1.0,
+    "safety": 1.0,
+    "structural_invariant_coverage": 1.0,
+    "semantic_contract": 0.100,
+    "semantic_fn_total": 10,
+    "semantic_fn_with_any_error": 5,
+    "semantic_fn_error_rate": 0.5000,
+    "semantic_fn_intent_classified": 2,
+    "semantic_fn_low_confidence": 8,
+    "semantic_fn_intent_coverage": 0.2000,
+    "semantic_fn_low_confidence_rate": 0.8000
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            workspace.join("agent_state/semantic_manifest_proposals.json"),
+            r#"{
+  "fn_total": 10,
+  "fn_with_any_error": 0,
+  "fn_error_rate": 0.0,
+  "fn_intent_classified": 7,
+  "fn_low_confidence": 3,
+  "fn_intent_coverage": 0.7,
+  "fn_low_confidence_rate": 0.3,
+  "proposals": []
+}"#,
+        )
+        .unwrap();
+
+        let header = build_eval_header(workspace.as_path());
+        assert!(header.contains("semantic_contract=0.490"));
+        assert!(header.contains("semantic_errors=0/10(0.0000)"));
+        assert!(header.contains("semantic_intent=7/10(0.7000)"));
+        assert!(header.contains("semantic_low_confidence=3(0.3000)"));
+        assert!(!header.contains("semantic_errors=5/10(0.5000)"));
+        assert!(header.contains("weakest=semantic_contract(0.490)"));
     }
 
     #[test]

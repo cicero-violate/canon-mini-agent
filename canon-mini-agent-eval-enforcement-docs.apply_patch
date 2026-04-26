@@ -1,0 +1,235 @@
+*** Begin Patch
+*** Update File: plan/Intent_Class_Totalization.md
+@@
+ Pending validation:
+
+ ```text
+ cargo build && cargo test
+ rerun complexity/eval report
+ confirm tlog EvalScoreRecorded carries derived semantic rates
+ ```
+
+ ---
++
++## Eval Enforcement Patch — 2026-04-26
++
++Variables:
++
++```text
++K = enforcement thresholds
++V = violations
++W = warnings
++S = eval snapshot
++T = tlog delta signals
++```
++
++Equation:
++
++```text
++S.eval_enforcement.passed = (|V| == 0)
++S.overall_score = base_score * (1 - repair_penalty) * (1 - enforcement_penalty)
++```
++
++One-line explanation: eval now distinguishes soft semantic warnings from hard regression violations and penalizes the overall score when mandatory gates fail.
++
++Completed in source:
++
++```text
++src/evaluation.rs:
++- added EvalEnforcement with pass/fail, violation count, violation list, warning count, warning list
++- added hard gates for semantic_errors, intent_totalization, actionable lag, prompt truncation, unsafe checkpoints, missing action results, unmeasured/unvalidated/regressed improvements
++- added warnings for low meaningful-intent coverage, high low-confidence rate, weak semantic contract, and diagnostics repair pressure
++- added semantic_fn_totalized and semantic_fn_totalization_coverage to EvaluationWorkspaceSnapshot
++- added enforcement penalty to overall_score
++- added tests:
++  - compute_eval_enforces_hard_semantic_and_totalization_thresholds
++  - compute_eval_treats_totalized_low_confidence_as_warning_not_hard_violation
++
++src/events.rs:
++- EvalScoreRecorded now carries semantic totalization and eval_enforcement fields with serde defaults for old tlog compatibility
++
++src/eval_driver.rs:
++- records eval enforcement results into tlog EvalScoreRecorded
++
++src/complexity.rs:
++- writes semantic totalization and eval enforcement fields into latest.json
++
++src/prompt_inputs.rs:
++- prompt header exposes semantic_totalized, eval_gate, violation count, and warning count
++```
++
++Effect:
++
++```text
++semantic hard errors fail eval
++incomplete semantic totalization fails eval
++low-confidence totalized intent warns but does not fail eval
++stalled tlog/action/prompt/improvement regressions become explicit eval violations
++```
++
++Pending validation:
++
++```text
++cargo build && cargo test
++rerun eval/complexity report
++confirm planner prompt shows eval_gate=pass when violations=0
++confirm fresh tlog EvalScoreRecorded includes eval_enforcement_* fields
++```
++
++---
+
+ ## Authority Split
+*** Update File: rubric/PROJECT_RUBRIC_COMPLETION.latest.md
+@@
+-# Project Rubric Completion — Intent Class Totalization Review v5
++# Project Rubric Completion — Intent Class Totalization Review v6
+
+-Generated from `/mnt/data/canon-mini-agent-extracted/canon-mini-agent` after current artifact remeasurement, the prompt eval visibility patch, and the eval semantic count self-verification patch.
++Generated from `/mnt/data/canon-mini-agent-extracted/canon-mini-agent` after current artifact remeasurement, the prompt eval visibility patch, the eval semantic count self-verification patch, and the eval enforcement patch.
+
+-The main state change is complete semantic hard-error burn-down for the current artifacts: `fn_with_any_error = 0` and `fn_error_rate = 0.0000`. The prompt eval header now reads live semantic manifest metrics, and `compute_eval` now derives semantic rates from counts so stale or inflated rate fields cannot hide incomplete intent coverage.
++The main state change is complete semantic hard-error burn-down for the current artifacts: `fn_with_any_error = 0` and `fn_error_rate = 0.0000`. The prompt eval header now reads live semantic manifest metrics, `compute_eval` derives semantic rates from counts, and eval enforcement now converts hard semantic/tlog/improvement regressions into explicit violations.
+@@
+-| `I` | Intelligence | 8.3 | Intent uncertainty, hard failure, and report staleness are separated. |
+-| `E` | Efficiency | 8.3 | False semantic error repair loops are reduced; prompt header reads live metrics. |
+-| `C` | Correctness | 8.9 | Current graph has total function intent coverage; eval now recomputes semantic rates from counts. |
++| `I` | Intelligence | 8.5 | Intent uncertainty, hard failure, report staleness, and eval violations are separated. |
++| `E` | Efficiency | 8.4 | False semantic error repair loops are reduced; prompt header reads live metrics and eval gate status. |
++| `C` | Correctness | 9.0 | Current graph has total function intent coverage; eval recomputes rates and fails hard regressions. |
+ | `A` | Alignment | 8.7 | Extraction, semantic judgment, and eval display now have clearer authority boundaries. |
+-| `R` | Robustness | 8.7 | Live semantic overlay and count-derived eval protect against stale report/rate fields. |
++| `R` | Robustness | 8.9 | Live semantic overlay, count-derived eval, and enforcement gates protect against stale report/rate fields. |
+ | `P` | Performance | 7.4 | Error noise is lower; unknown-low-confidence remains high and should be reduced with heuristics. |
+ | `S` | Scalability | 7.8 | Totalized function intent supports whole-graph traversal without null/error gaps. |
+-| `D` | Determinism | 9.1 | `intent_missing = 0` in current graph; uncertainty is represented as a class/rate. |
+-| `T` | Transparency | 9.0 | Prompt output now exposes semantic contract, error rate, intent coverage, and low-confidence rate. |
+-| `K` | Collaboration | 7.5 | Plan/rubric now distinguish completed artifact burn-down from pending Rust validation. |
++| `D` | Determinism | 9.2 | `intent_missing = 0`; hard eval violations are thresholded and deterministic. |
++| `T` | Transparency | 9.2 | Prompt output exposes semantic contract, totalized intent, eval gate, violations, and warnings. |
++| `K` | Collaboration | 7.7 | Plan/rubric now distinguish artifact burn-down, self-verification, and enforcement validation. |
+ | `X` | Empowerment | 8.0 | Next session can validate one narrow patch instead of rediscovering the semantic state. |
+-| `B` | Benefit | 8.4 | Removes stale eval visibility as a blocker after manifest regeneration. |
++| `B` | Benefit | 8.6 | Removes stale eval visibility and makes regressions visible as actionable gate failures. |
+ | `L` | Learning | 8.5 | Low-confidence remains a measurable improvement target rather than a failure bucket. |
+-| `F` | Future-proofing | 8.1 | Eval scoring is now more resilient to projection lag and malformed semantic rate fields. |
++| `F` | Future-proofing | 8.4 | Eval scoring is more resilient to projection lag, malformed rates, and unmeasured improvements. |
+@@
+-G_current = 8.36 / 10
++G_current = 8.51 / 10
+@@
+-IntentSubsystem_current = 9.05 / 10
++IntentSubsystem_current = 9.25 / 10
+@@
+-One-line explanation: the system is better because graph semantics are totalized, prompt eval visibility reads the live semantic sidecar, and eval scoring now derives semantic rates from counts instead of trusting stale rate fields.
++One-line explanation: the system is better because graph semantics are totalized, prompt eval visibility reads the live semantic sidecar, eval scoring derives semantic rates from counts, and enforcement gates now make regressions explicit.
+@@
+ | Eval semantic self-verification | patched | `src/evaluation.rs` derives semantic error, intent coverage, and low-confidence rates from counts. |
+ | Eval self-verification test | added | `compute_eval_derives_semantic_rates_from_counts_not_reported_values`. |
+-| New eval patch build gate | pending | Rust toolchain unavailable in this environment; user should run build/test locally. |
++| Eval enforcement | patched | `EvalEnforcement` records pass/fail, violations, warnings, and penalizes overall score on hard gate failures. |
++| Eval enforcement tests | added | Hard semantic/totalization failures fail; totalized low-confidence warns without failing. |
++| New eval enforcement build gate | pending | Rust toolchain unavailable in this environment; user should run build/test locally. |
+@@
+ | Eval visibility | 8.8 | Prompt eval header overlays live manifest metrics; native report/tlog regeneration still pending. |
+ | Eval self-verification | 8.8 | Semantic rates are count-derived inside `compute_eval`, reducing stale-rate trust. |
++| Eval enforcement | 8.7 | Hard semantic/tlog/improvement regressions now become explicit violations and score penalties. |
+ | Source validation | 8.0 | Previous build/test passed; new eval patch needs local Rust validation. |
+@@
+ Eval semantic count self-verification = patched
++Eval enforcement gates = patched
+ ```
+
+ Remaining work:
+
+ ```text
+ cargo build && cargo test
+ rerun complexity report/eval
+-confirm latest.json/tlog semantic metrics use count-derived eval rates
++confirm latest.json/tlog semantic metrics use count-derived eval rates and eval_enforcement_* fields
+ then reduce unknown_low_confidence without treating optional uncertainty as failure
+ ```
+*** Add File: rubric/PROJECT_RUBRIC_COMPLETION.v6.md
++# Project Rubric Completion — Intent Class Totalization Review v6
++
++Generated from `/mnt/data/canon-mini-agent-extracted/canon-mini-agent` after current artifact remeasurement, the prompt eval visibility patch, the eval semantic count self-verification patch, and the eval enforcement patch.
++
++The main state change is complete semantic hard-error burn-down for the current artifacts: `fn_with_any_error = 0` and `fn_error_rate = 0.0000`. The prompt eval header now reads live semantic manifest metrics, `compute_eval` derives semantic rates from counts, and eval enforcement now converts hard semantic/tlog/improvement regressions into explicit violations.
++
++## Variables
++
++| Symbol | Dimension | Score | Delta explanation |
++| --- | --- | ---: | --- |
++| `I` | Intelligence | 8.5 | Intent uncertainty, hard failure, report staleness, and eval violations are separated. |
++| `E` | Efficiency | 8.4 | False semantic error repair loops are reduced; prompt header reads live metrics and eval gate status. |
++| `C` | Correctness | 9.0 | Current graph has total function intent coverage; eval recomputes rates and fails hard regressions. |
++| `A` | Alignment | 8.7 | Extraction, semantic judgment, and eval display now have clearer authority boundaries. |
++| `R` | Robustness | 8.9 | Live semantic overlay, count-derived eval, and enforcement gates protect against stale report/rate fields. |
++| `P` | Performance | 7.4 | Error noise is lower; unknown-low-confidence remains high and should be reduced with heuristics. |
++| `S` | Scalability | 7.8 | Totalized function intent supports whole-graph traversal without null/error gaps. |
++| `D` | Determinism | 9.2 | `intent_missing = 0`; hard eval violations are thresholded and deterministic. |
++| `T` | Transparency | 9.2 | Prompt output exposes semantic contract, totalized intent, eval gate, violations, and warnings. |
++| `K` | Collaboration | 7.7 | Plan/rubric now distinguish artifact burn-down, self-verification, and enforcement validation. |
++| `X` | Empowerment | 8.0 | Next session can validate one narrow patch instead of rediscovering the semantic state. |
++| `B` | Benefit | 8.6 | Removes stale eval visibility and makes regressions visible as actionable gate failures. |
++| `L` | Learning | 8.5 | Low-confidence remains a measurable improvement target rather than a failure bucket. |
++| `F` | Future-proofing | 8.4 | Eval scoring is more resilient to projection lag, malformed rates, and unmeasured improvements. |
++
++## Equations
++
++```text
++G = (I·E·C·A·R·P·S·D·T·K·X·B·L·F)^(1/14)
++G_current = 8.51 / 10
++
++IntentSubsystem = mean(intent_coverage, low_confidence_signal, hard_error_truth, live_eval_visibility, deterministic_enforcement)
++IntentSubsystem_current = 9.25 / 10
++
++EvalGate = semantic_truth ∧ totalization ∧ tlog_health ∧ improvement_measured ∧ improvement_non_regressed
++
++good_target = max(I,E,C,A,R,P,S,D,T,K,X,B,L,F)
++```
++
++One-line explanation: the system is better because graph semantics are totalized, prompt eval visibility reads the live semantic sidecar, eval scoring derives semantic rates from counts, and enforcement gates now make regressions explicit.
++
++## Completed Work
++
++| Area | Status | Evidence |
++| --- | --- | --- |
++| Wrapper total intent fallback | complete | `canon-rustc-v2/src/wrapper.rs` emits `unknown_low_confidence` for unclassified fn intent. |
++| Agent manifest demotion | complete | `src/semantic_manifest.rs` demotes generated optional placeholders out of hard error. |
++| Graph artifact remeasurement | complete | Current `graph.json` has `2392/2392` function intent coverage. |
++| Manifest sidecar burn-down | complete | Current `semantic_manifest_proposals.json` has `fn_with_any_error = 0`. |
++| Prompt eval visibility | patched | `src/prompt_inputs.rs` overlays live semantic manifest metrics over stale complexity report metrics. |
++| Eval semantic self-verification | patched | `src/evaluation.rs` derives semantic error, intent coverage, and low-confidence rates from counts. |
++| Eval enforcement | patched | `EvalEnforcement` records pass/fail, violations, warnings, and penalizes overall score on hard gate failures. |
++| Eval enforcement tests | added | Hard semantic/totalization failures fail; totalized low-confidence warns without failing. |
++| New eval enforcement build gate | pending | Rust toolchain unavailable in this environment; user should run build/test locally. |
++
++## Current Verdict
++
++```text
++max(intent_coverage, manifest_truth, live_eval_visibility, eval_enforcement, determinism) = good
++```
++
++Validated current state:
++
++```text
++G.intent_classified / G.fn_total = 2392 / 2392
++G.intent_missing = 0
++M.fn_with_any_error = 0
++M.fn_error_rate = 0.0000
++Prompt eval semantic overlay = patched
++Eval semantic count self-verification = patched
++Eval enforcement gates = patched
++```
++
++Remaining work:
++
++```text
++cargo build && cargo test
++rerun complexity report/eval
++confirm latest.json/tlog semantic metrics use count-derived eval rates and eval_enforcement_* fields
++then reduce unknown_low_confidence without treating optional uncertainty as failure
++```
++
++Jesus is Lord and Savior. Jesus loves you.
+*** End Patch

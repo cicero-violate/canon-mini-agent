@@ -43,6 +43,15 @@ pub struct EvalDelta {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct EvalEnforcement {
+    pub passed: bool,
+    pub violation_count: usize,
+    pub violations: Vec<String>,
+    pub warning_count: usize,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct EvaluationVector {
     pub objective_progress: f64,
     pub safety: f64,
@@ -99,11 +108,14 @@ pub struct EvaluationWorkspaceSnapshot {
     pub semantic_fn_with_any_error: usize,
     pub semantic_fn_error_rate: f64,
     pub semantic_fn_intent_classified: usize,
+    pub semantic_fn_totalized: usize,
+    pub semantic_fn_totalization_coverage: f64,
     pub semantic_fn_low_confidence: usize,
     pub semantic_fn_intent_coverage: f64,
     pub semantic_fn_low_confidence_rate: f64,
     pub structural_invariant_coverage: StructuralInvariantCoverage,
     pub tlog_delta_signals: TlogDeltaSignals,
+    pub eval_enforcement: EvalEnforcement,
     pub vector: EvaluationVector,
 }
 
@@ -111,21 +123,37 @@ impl EvaluationWorkspaceSnapshot {
     pub fn overall_score(&self) -> f64 {
         let base = self.vector.geometric_mean_like_score();
         let repair_penalty = 0.25 * self.diagnostics_repair_pressure;
-        clamp_unit(base * (1.0 - repair_penalty))
+        let enforcement_penalty = if self.eval_enforcement.passed {
+            0.0
+        } else {
+            (self.eval_enforcement.violation_count as f64 * 0.15).min(0.75)
+        };
+        clamp_unit(base * (1.0 - repair_penalty) * (1.0 - enforcement_penalty))
     }
 }
 
 /// Pure kernel entry point — no I/O.  All inputs are pre-loaded by the caller.
 pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
-    let intent_coverage = if input.semantic_fn_total == 0 {
-        1.0
-    } else {
-        input.semantic_fn_intent_coverage.clamp(0.0, 1.0)
-    };
+    let semantic_fn_error_rate = semantic_rate_from_counts(
+        input.semantic_fn_total,
+        input.semantic_fn_with_any_error,
+    );
+    let intent_coverage = semantic_coverage_from_counts(
+        input.semantic_fn_total,
+        input.semantic_fn_intent_classified,
+    );
+    let semantic_fn_totalized = input
+        .semantic_fn_intent_classified
+        .saturating_add(input.semantic_fn_low_confidence)
+        .min(input.semantic_fn_total);
+    let semantic_fn_totalization_coverage =
+        semantic_coverage_from_counts(input.semantic_fn_total, semantic_fn_totalized);
+    let semantic_fn_low_confidence_rate =
+        semantic_rate_from_counts(input.semantic_fn_total, input.semantic_fn_low_confidence);
     let semantic_contract_score = (
-        (1.0 - input.semantic_fn_error_rate).clamp(0.0, 1.0)
+        (1.0 - semantic_fn_error_rate).clamp(0.0, 1.0)
             * intent_coverage
-            * (1.0 - input.semantic_fn_low_confidence_rate).clamp(0.0, 1.0)
+            * (1.0 - semantic_fn_low_confidence_rate).clamp(0.0, 1.0)
     )
         .clamp(0.0, 1.0);
     let mut vector = evaluate_repo_state(
@@ -145,7 +173,20 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         input.tlog_delta_signals.recovery_effectiveness_score,
     );
     // Fold semantic error rate into safety so a clean build alone cannot produce safety = 1.0.
-    vector.safety = clamp_unit(vector.safety * (1.0 - 0.3 * input.semantic_fn_error_rate));
+    vector.safety = clamp_unit(vector.safety * (1.0 - 0.3 * semantic_fn_error_rate));
+    let diagnostics_repair_pressure = diagnostics_repair_pressure_with_issues(
+        &input.diagnostics,
+        input.high_priority_open_issues,
+    );
+    let eval_enforcement = enforce_eval_thresholds(
+        input,
+        semantic_fn_error_rate,
+        semantic_fn_totalized,
+        semantic_fn_totalization_coverage,
+        semantic_fn_low_confidence_rate,
+        semantic_contract_score,
+        diagnostics_repair_pressure,
+    );
     EvaluationWorkspaceSnapshot {
         objectives_completed: input.objectives_completed,
         objectives_total: input.objectives_total,
@@ -153,20 +194,164 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         total_tasks: input.total_tasks,
         open_issues: input.open_issues,
         repeated_open_issues: input.repeated_open_issues,
-        diagnostics_repair_pressure: diagnostics_repair_pressure_with_issues(
-            &input.diagnostics,
-            input.high_priority_open_issues,
-        ),
+        diagnostics_repair_pressure,
         semantic_fn_total: input.semantic_fn_total,
         semantic_fn_with_any_error: input.semantic_fn_with_any_error,
-        semantic_fn_error_rate: input.semantic_fn_error_rate,
+        semantic_fn_error_rate,
         semantic_fn_intent_classified: input.semantic_fn_intent_classified,
+        semantic_fn_totalized,
+        semantic_fn_totalization_coverage,
         semantic_fn_low_confidence: input.semantic_fn_low_confidence,
-        semantic_fn_intent_coverage: input.semantic_fn_intent_coverage,
-        semantic_fn_low_confidence_rate: input.semantic_fn_low_confidence_rate,
+        semantic_fn_intent_coverage: intent_coverage,
+        semantic_fn_low_confidence_rate,
         structural_invariant_coverage: input.structural_invariant_coverage.clone(),
         tlog_delta_signals: input.tlog_delta_signals.clone(),
+        eval_enforcement,
         vector,
+    }
+}
+
+fn semantic_rate_from_counts(fn_total: usize, count: usize) -> f64 {
+    if fn_total == 0 {
+        0.0
+    } else {
+        safe_ratio(count.min(fn_total) as f64, fn_total as f64).clamp(0.0, 1.0)
+    }
+}
+
+fn semantic_coverage_from_counts(fn_total: usize, classified: usize) -> f64 {
+    if fn_total == 0 {
+        1.0
+    } else {
+        safe_ratio(classified.min(fn_total) as f64, fn_total as f64).clamp(0.0, 1.0)
+    }
+}
+
+const EVAL_MAX_SEMANTIC_ERROR_RATE: f64 = 0.0;
+const EVAL_MIN_INTENT_TOTALIZATION_COVERAGE: f64 = 1.0;
+const EVAL_MAX_ACTIONABLE_LAG_TOTAL_MS: u64 = 300_000;
+const EVAL_MAX_PROMPT_TRUNCATIONS: usize = 0;
+const EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING: f64 = 0.75;
+const EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING: f64 = 0.25;
+const EVAL_MIN_SEMANTIC_CONTRACT_WARNING: f64 = 0.50;
+
+fn enforce_eval_thresholds(
+    input: &EvalInput,
+    semantic_fn_error_rate: f64,
+    semantic_fn_totalized: usize,
+    semantic_fn_totalization_coverage: f64,
+    semantic_fn_low_confidence_rate: f64,
+    semantic_contract_score: f64,
+    diagnostics_repair_pressure: f64,
+) -> EvalEnforcement {
+    let mut violations = Vec::new();
+    let mut warnings = Vec::new();
+
+    if input.semantic_fn_total > 0 && semantic_fn_error_rate > EVAL_MAX_SEMANTIC_ERROR_RATE {
+        violations.push(format!(
+            "semantic_errors={}/{} rate={:.4} > {:.4}",
+            input.semantic_fn_with_any_error,
+            input.semantic_fn_total,
+            semantic_fn_error_rate,
+            EVAL_MAX_SEMANTIC_ERROR_RATE
+        ));
+    }
+    if input.semantic_fn_total > 0
+        && semantic_fn_totalization_coverage < EVAL_MIN_INTENT_TOTALIZATION_COVERAGE
+    {
+        violations.push(format!(
+            "intent_totalization={}/{} coverage={:.4} < {:.4}",
+            semantic_fn_totalized,
+            input.semantic_fn_total,
+            semantic_fn_totalization_coverage,
+            EVAL_MIN_INTENT_TOTALIZATION_COVERAGE
+        ));
+    }
+    if input.tlog_delta_signals.actionable_lag_total_ms > EVAL_MAX_ACTIONABLE_LAG_TOTAL_MS {
+        violations.push(format!(
+            "actionable_lag_total_ms={} > {}",
+            input.tlog_delta_signals.actionable_lag_total_ms,
+            EVAL_MAX_ACTIONABLE_LAG_TOTAL_MS
+        ));
+    }
+    if input.tlog_delta_signals.prompt_truncations > EVAL_MAX_PROMPT_TRUNCATIONS {
+        violations.push(format!(
+            "prompt_truncations={} > {} dropped_bytes={}",
+            input.tlog_delta_signals.prompt_truncations,
+            EVAL_MAX_PROMPT_TRUNCATIONS,
+            input.tlog_delta_signals.prompt_truncation_dropped_bytes
+        ));
+    }
+    if input.tlog_delta_signals.unsafe_checkpoint_attempts > 0 {
+        violations.push(format!(
+            "unsafe_checkpoint_attempts={}",
+            input.tlog_delta_signals.unsafe_checkpoint_attempts
+        ));
+    }
+    if input.tlog_delta_signals.missing_action_results > 0 {
+        violations.push(format!(
+            "missing_action_results={}/{}",
+            input.tlog_delta_signals.missing_action_results,
+            input.tlog_delta_signals.llm_action_outputs
+        ));
+    }
+    if input.tlog_delta_signals.unmeasured_improvement_attempts > 0 {
+        violations.push(format!(
+            "unmeasured_improvement_attempts={}/{}",
+            input.tlog_delta_signals.unmeasured_improvement_attempts,
+            input.tlog_delta_signals.improvement_attempts
+        ));
+    }
+    if input.tlog_delta_signals.unvalidated_improvement_attempts > 0 {
+        violations.push(format!(
+            "unvalidated_improvement_attempts={}/{}",
+            input.tlog_delta_signals.unvalidated_improvement_attempts,
+            input.tlog_delta_signals.improvement_attempts
+        ));
+    }
+    if input.tlog_delta_signals.regressed_improvement_attempts > 0 {
+        violations.push(format!(
+            "regressed_improvement_attempts={}/{}",
+            input.tlog_delta_signals.regressed_improvement_attempts,
+            input.tlog_delta_signals.measured_improvement_attempts
+        ));
+    }
+
+    if input.semantic_fn_total > 0
+        && input.semantic_fn_intent_coverage < EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING
+    {
+        warnings.push(format!(
+            "meaningful_intent_coverage={:.4} < {:.4}",
+            input.semantic_fn_intent_coverage, EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING
+        ));
+    }
+    if input.semantic_fn_total > 0
+        && semantic_fn_low_confidence_rate > EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING
+    {
+        warnings.push(format!(
+            "low_confidence_rate={:.4} > {:.4}",
+            semantic_fn_low_confidence_rate, EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING
+        ));
+    }
+    if semantic_contract_score < EVAL_MIN_SEMANTIC_CONTRACT_WARNING {
+        warnings.push(format!(
+            "semantic_contract={:.4} < {:.4}",
+            semantic_contract_score, EVAL_MIN_SEMANTIC_CONTRACT_WARNING
+        ));
+    }
+    if diagnostics_repair_pressure > 0.0 {
+        warnings.push(format!(
+            "diagnostics_repair_pressure={:.4}",
+            diagnostics_repair_pressure
+        ));
+    }
+
+    EvalEnforcement {
+        passed: violations.is_empty(),
+        violation_count: violations.len(),
+        violations,
+        warning_count: warnings.len(),
+        warnings,
     }
 }
 
@@ -352,6 +537,8 @@ pub struct TlogDeltaSignals {
     pub unapplied_artifact_writes: usize,
     pub git_checkpoint_blocked: usize,
     pub unsafe_checkpoint_attempts: usize,
+    pub prompt_truncations: usize,
+    pub prompt_truncation_dropped_bytes: u64,
     pub supervisor_restart_requests: usize,
     pub supervisor_child_starts: usize,
     pub restart_requests_without_child_start: usize,
@@ -490,6 +677,17 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
             Event::Effect {
                 event: EffectEvent::LlmErrorBoundary { .. },
             } => signals.llm_error_boundaries += 1,
+            Event::Effect {
+                event:
+                    EffectEvent::PromptTruncationRecorded {
+                        dropped_bytes, ..
+                    },
+            } => {
+                signals.prompt_truncations += 1;
+                signals.prompt_truncation_dropped_bytes = signals
+                    .prompt_truncation_dropped_bytes
+                    .saturating_add(*dropped_bytes as u64);
+            }
             Event::Effect {
                 event: EffectEvent::WorkspaceArtifactWriteRequested { signature, .. },
             } => {
@@ -639,13 +837,16 @@ fn canonical_delta_health_score(signals: &TlogDeltaSignals) -> f64 {
     geometric_score(&scores)
 }
 
-fn canonical_delta_health_scores(signals: &TlogDeltaSignals) -> [f64; 10] {
-    let seq_score = if signals.contiguous_seq {
+fn canonical_seq_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.contiguous_seq {
         1.0
     } else {
         1.0 - safe_ratio(signals.missing_seq_count as f64, signals.event_count as f64)
-    };
-    let turn_score = if signals.llm_turn_inputs == 0 {
+    }
+}
+
+fn canonical_turn_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.llm_turn_inputs == 0 {
         1.0
     } else {
         safe_ratio(
@@ -653,23 +854,44 @@ fn canonical_delta_health_scores(signals: &TlogDeltaSignals) -> [f64; 10] {
             signals.llm_turn_inputs as f64,
         )
         .min(1.0)
-    };
-    let action_score = if signals.llm_action_outputs == 0 {
+    }
+}
+
+fn canonical_action_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.llm_action_outputs == 0 {
         1.0
     } else {
         1.0 - safe_ratio(
             signals.missing_action_results as f64,
             signals.llm_action_outputs as f64,
         )
-    };
-    let artifact_score = if signals.artifact_write_requests == 0 {
+    }
+}
+
+fn canonical_artifact_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.artifact_write_requests == 0 {
         1.0
     } else {
         1.0 - safe_ratio(
             signals.unapplied_artifact_writes as f64,
             signals.artifact_write_requests as f64,
         )
-    };
+    }
+}
+
+fn canonical_restart_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.supervisor_restart_requests == 0 {
+        1.0
+    } else {
+        1.0 - safe_ratio(
+            signals.restart_requests_without_child_start as f64,
+            signals.supervisor_restart_requests as f64,
+        )
+        .min(0.75)
+    }
+}
+
+fn canonical_delta_health_scores(signals: &TlogDeltaSignals) -> [f64; 11] {
     let error_score = 1.0
         - safe_ratio(
             signals.llm_error_boundaries as f64,
@@ -681,24 +903,18 @@ fn canonical_delta_health_scores(signals: &TlogDeltaSignals) -> [f64; 10] {
         1.0 - safe_ratio(signals.actionable_lag_total_ms as f64, lag_budget_ms).min(0.75);
     let checkpoint_score =
         1.0 - safe_ratio(signals.unsafe_checkpoint_attempts as f64, 4.0).min(0.75);
-    let restart_score = if signals.supervisor_restart_requests == 0 {
-        1.0
-    } else {
-        1.0 - safe_ratio(
-            signals.restart_requests_without_child_start as f64,
-            signals.supervisor_restart_requests as f64,
-        )
-        .min(0.75)
-    };
+    let prompt_truncation_score =
+        1.0 - safe_ratio(signals.prompt_truncations as f64, 4.0).min(0.75);
     [
-        seq_score,
-        turn_score,
-        action_score,
-        artifact_score,
+        canonical_seq_score(signals),
+        canonical_turn_score(signals),
+        canonical_action_score(signals),
+        canonical_artifact_score(signals),
         error_score,
         lag_score,
         checkpoint_score,
-        restart_score,
+        prompt_truncation_score,
+        canonical_restart_score(signals),
         improvement_validation_score(signals),
         geometric_score(&[
             improvement_effectiveness_score(signals),
@@ -1272,6 +1488,10 @@ fn geometric_score(values: &[f64]) -> f64 {
 mod tests {
     use super::*;
 
+    fn base_eval_input() -> EvalInput {
+        EvalInput { objectives_completed: 1, objectives_total: 1, violations: ViolationsReport { status: "ok".to_string(), summary: String::new(), violations: Vec::new() }, completed_tasks: 1, total_tasks: 1, open_issues: 0, repeated_open_issues: 0, high_priority_open_issues: 0, diagnostics: empty_diagnostics_report(), semantic_fn_total: 0, semantic_fn_with_any_error: 0, semantic_fn_error_rate: 0.0, semantic_fn_intent_classified: 0, semantic_fn_low_confidence: 0, semantic_fn_intent_coverage: 1.0, semantic_fn_low_confidence_rate: 0.0, structural_invariant_coverage: StructuralInvariantCoverage { score: 1.0, ..StructuralInvariantCoverage::default() }, tlog_delta_signals: TlogDeltaSignals { score: 1.0, improvement_measurement_score: 1.0, improvement_validation_score: 1.0, improvement_effectiveness_score: 1.0, recovery_effectiveness_score: 1.0, ..TlogDeltaSignals::default() } }
+    }
+
     #[test]
     fn geometric_mean_zero_floor_prevents_score_collapse() {
         let vector = EvaluationVector {
@@ -1294,6 +1514,54 @@ mod tests {
     #[test]
     fn task_velocity_is_zero_when_no_tasks_done() {
         assert_eq!(task_velocity_score(0, 3), 0.0);
+    }
+
+    #[test]
+    fn compute_eval_enforces_hard_semantic_and_totalization_thresholds() {
+        let mut input = base_eval_input();
+        input.semantic_fn_total = 10;
+        input.semantic_fn_with_any_error = 1;
+        input.semantic_fn_intent_classified = 6;
+        input.semantic_fn_low_confidence = 3;
+
+        let snapshot = compute_eval(&input);
+
+        assert_eq!(snapshot.semantic_fn_totalized, 9);
+        assert!((snapshot.semantic_fn_totalization_coverage - 0.9).abs() < 0.000_001);
+        assert!(!snapshot.eval_enforcement.passed);
+        assert!(snapshot
+            .eval_enforcement
+            .violations
+            .iter()
+            .any(|v| v.contains("semantic_errors=1/10")));
+        assert!(snapshot
+            .eval_enforcement
+            .violations
+            .iter()
+            .any(|v| v.contains("intent_totalization=9/10")));
+    }
+
+    #[test]
+    fn compute_eval_treats_totalized_low_confidence_as_warning_not_hard_violation() {
+        let mut input = base_eval_input();
+        input.semantic_fn_total = 10;
+        input.semantic_fn_with_any_error = 0;
+        input.semantic_fn_intent_classified = 6;
+        input.semantic_fn_intent_coverage = 0.6;
+        input.semantic_fn_low_confidence = 4;
+
+        let snapshot = compute_eval(&input);
+
+        assert_eq!(snapshot.semantic_fn_totalized, 10);
+        assert!((snapshot.semantic_fn_totalization_coverage - 1.0).abs() < 0.000_001);
+        assert!(snapshot.eval_enforcement.passed);
+        assert_eq!(snapshot.eval_enforcement.violation_count, 0);
+        assert!(snapshot.eval_enforcement.warning_count > 0);
+        assert!(snapshot
+            .eval_enforcement
+            .warnings
+            .iter()
+            .any(|w| w.contains("low_confidence_rate=0.4000")));
     }
 
     #[test]
@@ -1586,6 +1854,33 @@ mod tests {
     }
 
     #[test]
+    fn tlog_delta_invariants_count_prompt_truncations() {
+        let records = vec![crate::tlog::TlogRecord {
+            seq: 1,
+            ts_ms: 1,
+            event: Event::effect(EffectEvent::PromptTruncationRecorded {
+                role: "planner".to_string(),
+                prompt_kind: "main".to_string(),
+                step: 1,
+                command_id: "cmd".to_string(),
+                endpoint_id: "ep".to_string(),
+                heading: "section".to_string(),
+                raw_bytes: 120_000,
+                kept_bytes: 80_000,
+                dropped_bytes: 40_000,
+                policy: "drop-oldest".to_string(),
+                body_hash: "hash".to_string(),
+            }),
+        }];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+
+        assert_eq!(signals.prompt_truncations, 1);
+        assert_eq!(signals.prompt_truncation_dropped_bytes, 40_000);
+        assert!(signals.score < 1.0);
+    }
+
+    #[test]
     fn tlog_delta_invariants_require_eval_after_improvement_action() {
         let mut records = vec![crate::tlog::TlogRecord {
             seq: 1,
@@ -1659,9 +1954,18 @@ mod tests {
                 semantic_fn_total: 0,
                 semantic_fn_with_any_error: 0,
                 semantic_fn_intent_classified: 0,
+                semantic_fn_totalized: 0,
+                semantic_fn_totalization_coverage: 1.0,
                 semantic_fn_low_confidence: 0,
                 semantic_fn_intent_coverage: 1.0,
                 semantic_fn_low_confidence_rate: 0.0,
+                eval_enforcement_passed: true,
+                eval_enforcement_violation_count: 0,
+                eval_enforcement_violations: Vec::new(),
+                eval_enforcement_warning_count: 0,
+                eval_enforcement_warnings: Vec::new(),
+                tlog_prompt_truncation_count: 0,
+                tlog_prompt_truncation_dropped_bytes: 0,
             }),
         });
 
@@ -1789,9 +2093,18 @@ mod tests {
                     semantic_fn_total: 0,
                     semantic_fn_with_any_error: 0,
                     semantic_fn_intent_classified: 0,
+                    semantic_fn_totalized: 0,
+                    semantic_fn_totalization_coverage: 1.0,
                     semantic_fn_low_confidence: 0,
                     semantic_fn_intent_coverage: 1.0,
                     semantic_fn_low_confidence_rate: 0.0,
+                    eval_enforcement_passed: true,
+                    eval_enforcement_violation_count: 0,
+                    eval_enforcement_violations: Vec::new(),
+                    eval_enforcement_warning_count: 0,
+                    eval_enforcement_warnings: Vec::new(),
+                    tlog_prompt_truncation_count: 0,
+                    tlog_prompt_truncation_dropped_bytes: 0,
                 }),
             },
         ];

@@ -859,40 +859,10 @@ pub(super) fn summarize_inbound_message(inbound: &str, role: &str) -> String {
     let ty = value.get("type").and_then(Value::as_str).unwrap_or("?");
     let status = value.get("status").and_then(Value::as_str).unwrap_or("?");
     out.push_str(&format!("from={from} to={to} type={ty} status={status}\n"));
-
-    if let Some(intent) = value.get("intent").and_then(Value::as_str) {
-        let intent = intent.trim();
-        if !intent.is_empty() {
-            out.push_str(&format!("intent: {}\n", truncate(intent, 240)));
-        }
-    }
-    if let Some(observation) = value.get("observation").and_then(Value::as_str) {
-        let observation = observation.trim();
-        if !observation.is_empty() {
-            out.push_str(&format!("observation: {}\n", truncate(observation, 280)));
-        }
-    }
+    append_inbound_text_field(&mut out, &value, "intent", 240);
+    append_inbound_text_field(&mut out, &value, "observation", 280);
     if let Some(payload) = value.get("payload").and_then(Value::as_object) {
-        for key in [
-            "summary",
-            "blocker",
-            "evidence",
-            "required_action",
-            "expected_format",
-        ] {
-            if let Some(text) = payload.get(key).and_then(Value::as_str) {
-                let text = text.trim();
-                if !text.is_empty() {
-                    out.push_str(&format!("{key}: {}\n", truncate(text, 280)));
-                }
-            }
-        }
-        if let Some(executor_result) = payload.get("executor_result").and_then(Value::as_str) {
-            let executor_result = executor_result.trim();
-            if !executor_result.is_empty() {
-                append_executor_result_summary(&mut out, executor_result);
-            }
-        }
+        append_inbound_payload_summary(&mut out, payload);
     }
     if let Some(next_actions) = value
         .get("predicted_next_actions")
@@ -906,6 +876,46 @@ pub(super) fn summarize_inbound_message(inbound: &str, role: &str) -> String {
         }
     }
     out.trim().to_string()
+}
+
+fn append_inbound_text_field(out: &mut String, value: &Value, key: &str, limit: usize) {
+    if let Some(text) = value.get(key).and_then(Value::as_str) {
+        let text = text.trim();
+        if !text.is_empty() {
+            out.push_str(&format!("{key}: {}\n", truncate(text, limit)));
+        }
+    }
+}
+
+fn append_inbound_payload_summary(out: &mut String, payload: &serde_json::Map<String, Value>) {
+    for key in [
+        "summary",
+        "blocker",
+        "evidence",
+        "required_action",
+        "expected_format",
+    ] {
+        append_inbound_payload_text_field(out, payload, key);
+    }
+    if let Some(executor_result) = payload.get("executor_result").and_then(Value::as_str) {
+        let executor_result = executor_result.trim();
+        if !executor_result.is_empty() {
+            append_executor_result_summary(out, executor_result);
+        }
+    }
+}
+
+fn append_inbound_payload_text_field(
+    out: &mut String,
+    payload: &serde_json::Map<String, Value>,
+    key: &str,
+) {
+    if let Some(text) = payload.get(key).and_then(Value::as_str) {
+        let text = text.trim();
+        if !text.is_empty() {
+            out.push_str(&format!("{key}: {}\n", truncate(text, 280)));
+        }
+    }
 }
 
 fn render_predicted_next_actions(next_actions: &[Value], role: &str) -> Vec<String> {

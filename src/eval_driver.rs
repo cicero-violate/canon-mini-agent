@@ -115,9 +115,20 @@ pub fn run(
         semantic_fn_total: snapshot.semantic_fn_total,
         semantic_fn_with_any_error: snapshot.semantic_fn_with_any_error,
         semantic_fn_intent_classified: snapshot.semantic_fn_intent_classified,
+        semantic_fn_totalized: snapshot.semantic_fn_totalized,
+        semantic_fn_totalization_coverage: snapshot.semantic_fn_totalization_coverage,
         semantic_fn_low_confidence: snapshot.semantic_fn_low_confidence,
         semantic_fn_intent_coverage: snapshot.semantic_fn_intent_coverage,
         semantic_fn_low_confidence_rate: snapshot.semantic_fn_low_confidence_rate,
+        eval_enforcement_passed: snapshot.eval_enforcement.passed,
+        eval_enforcement_violation_count: snapshot.eval_enforcement.violation_count,
+        eval_enforcement_violations: snapshot.eval_enforcement.violations.clone(),
+        eval_enforcement_warning_count: snapshot.eval_enforcement.warning_count,
+        eval_enforcement_warnings: snapshot.eval_enforcement.warnings.clone(),
+        tlog_prompt_truncation_count: snapshot.tlog_delta_signals.prompt_truncations,
+        tlog_prompt_truncation_dropped_bytes: snapshot
+            .tlog_delta_signals
+            .prompt_truncation_dropped_bytes,
     };
 
     if let Some(w) = writer {

@@ -1,0 +1,118 @@
+*** Begin Patch
+*** Update File: src/semantic_manifest.rs
+@@
+-fn doc_scalar_forces_error(value: Option<&str>) -> bool {
+-    value.is_some_and(is_missing_contract_value)
++fn doc_scalar_forces_error(value: Option<&str>) -> bool {
++    value.is_some_and(is_hard_contract_error_value)
+ }
+
+ fn doc_list_forces_error(values: &[String]) -> bool {
+-    !values.is_empty() && values.iter().any(|value| is_missing_contract_value(value))
++    values.iter().any(|value| is_hard_contract_error_value(value))
++}
++
++fn is_hard_contract_error_value(value: &str) -> bool {
++    let normalized = value.trim().to_ascii_lowercase();
++    matches!(
++        normalized.as_str(),
++        "hard_error" | "extractor_error" | "schema_error" | "schema_corruption" | "parse_error"
++    ) || normalized.starts_with("hard_error:")
++        || normalized.starts_with("extractor_error:")
++        || normalized.starts_with("schema_error:")
++        || normalized.starts_with("schema_corruption:")
++        || normalized.starts_with("parse_error:")
+ }
+*** End Patch
+
+*** Begin Patch
+*** Update File: src/semantic_manifest.rs
+@@
+ pub fn run_from_cli_args(
+     args: &[String],
+     workspace: PathBuf,
+ ) -> anyhow::Result<SemanticManifestRunReport> {
+@@
+     })
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn proposal_for_doc(docstring: Option<&str>, path: &str) -> SemanticManifest {
++        let node = GraphNode {
++            path: path.to_string(),
++            kind: "fn".to_string(),
++            signature: Some("fn(&std::path::Path) -> anyhow::Result<()>".to_string()),
++            docstring: docstring.map(str::to_string),
++            ..Default::default()
++        };
++        build_node_semantic_manifest_proposal(
++            "node",
++            &node,
++            Path::new("."),
++            &mut HashMap::new(),
++            &HashMap::new(),
++            &HashMap::new(),
++        )
++    }
++
++    #[test]
++    fn generated_doc_error_placeholders_are_repairable() {
++        let manifest = proposal_for_doc(
++            Some(
++                "Intent: event_append\n\
++                 Resource: error\n\
++                 Inputs: &std::path::Path\n\
++                 Outputs: anyhow::Result<()>\n\
++                 Effects: error\n\
++                 Forbidden: error\n\
++                 Invariants: error\n\
++                 Failure: error\n\
++                 Provenance: rustc:facts + rustc:docstring",
++            ),
++            "tools::append_event_record",
++        );
++
++        assert_eq!(manifest.intent_class, "event_append");
++        assert_ne!(manifest.resource, MISSING);
++        assert!(!contains_missing(&manifest.effects));
++        assert!(!contains_missing(&manifest.forbidden_effects));
++        assert_ne!(manifest.failure_mode, MISSING);
++        assert!(!contains_missing(&manifest.invariants));
++        assert!(!manifest_has_error(&manifest));
++    }
++
++    #[test]
++    fn unknown_low_confidence_is_metric_only_not_partial_error() {
++        let manifest = proposal_for_doc(None, "math::combine_values");
++
++        assert_eq!(manifest.intent_class, UNKNOWN_LOW_CONFIDENCE);
++        assert!(manifest_has_low_confidence(&manifest));
++        assert!(!intent_is_classified(&manifest.intent_class));
++        assert!(!manifest_has_error(&manifest));
++    }
++
++    #[test]
++    fn explicit_hard_doc_error_still_marks_partial_error() {
++        let manifest = proposal_for_doc(
++            Some(
++                "Intent: event_append\n\
++                 Resource: hard_error\n\
++                 Inputs: &std::path::Path\n\
++                 Outputs: anyhow::Result<()>\n\
++                 Effects: fs_write\n\
++                 Forbidden: default_overwrite\n\
++                 Invariants: append_only_log\n\
++                 Failure: fail_closed\n\
++                 Provenance: rustc:facts + rustc:docstring",
++            ),
++            "tools::append_event_record",
++        );
++
++        assert_eq!(manifest.resource, MISSING);
++        assert!(manifest_has_error(&manifest));
++    }
++}
+*** End Patch

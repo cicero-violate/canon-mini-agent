@@ -1,0 +1,559 @@
+*** Begin Patch
+*** Update File: src/evaluation.rs
+@@ -43,6 +43,15 @@
+ }
+ 
+ #[derive(Debug, Clone, Default)]
++pub struct EvalEnforcement {
++    pub passed: bool,
++    pub violation_count: usize,
++    pub violations: Vec<String>,
++    pub warning_count: usize,
++    pub warnings: Vec<String>,
++}
++
++#[derive(Debug, Clone, Default)]
+ pub struct EvaluationVector {
+     pub objective_progress: f64,
+     pub safety: f64,
+@@ -99,11 +108,14 @@
+     pub semantic_fn_with_any_error: usize,
+     pub semantic_fn_error_rate: f64,
+     pub semantic_fn_intent_classified: usize,
++    pub semantic_fn_totalized: usize,
++    pub semantic_fn_totalization_coverage: f64,
+     pub semantic_fn_low_confidence: usize,
+     pub semantic_fn_intent_coverage: f64,
+     pub semantic_fn_low_confidence_rate: f64,
+     pub structural_invariant_coverage: StructuralInvariantCoverage,
+     pub tlog_delta_signals: TlogDeltaSignals,
++    pub eval_enforcement: EvalEnforcement,
+     pub vector: EvaluationVector,
+ }
+ 
+@@ -111,7 +123,12 @@
+     pub fn overall_score(&self) -> f64 {
+         let base = self.vector.geometric_mean_like_score();
+         let repair_penalty = 0.25 * self.diagnostics_repair_pressure;
+-        clamp_unit(base * (1.0 - repair_penalty))
++        let enforcement_penalty = if self.eval_enforcement.passed {
++            0.0
++        } else {
++            (self.eval_enforcement.violation_count as f64 * 0.15).min(0.75)
++        };
++        clamp_unit(base * (1.0 - repair_penalty) * (1.0 - enforcement_penalty))
+     }
+ }
+ 
+@@ -125,6 +142,12 @@
+         input.semantic_fn_total,
+         input.semantic_fn_intent_classified,
+     );
++    let semantic_fn_totalized = input
++        .semantic_fn_intent_classified
++        .saturating_add(input.semantic_fn_low_confidence)
++        .min(input.semantic_fn_total);
++    let semantic_fn_totalization_coverage =
++        semantic_coverage_from_counts(input.semantic_fn_total, semantic_fn_totalized);
+     let semantic_fn_low_confidence_rate =
+         semantic_rate_from_counts(input.semantic_fn_total, input.semantic_fn_low_confidence);
+     let semantic_contract_score = (
+@@ -151,6 +174,19 @@
+     );
+     // Fold semantic error rate into safety so a clean build alone cannot produce safety = 1.0.
+     vector.safety = clamp_unit(vector.safety * (1.0 - 0.3 * semantic_fn_error_rate));
++    let diagnostics_repair_pressure = diagnostics_repair_pressure_with_issues(
++        &input.diagnostics,
++        input.high_priority_open_issues,
++    );
++    let eval_enforcement = enforce_eval_thresholds(
++        input,
++        semantic_fn_error_rate,
++        semantic_fn_totalized,
++        semantic_fn_totalization_coverage,
++        semantic_fn_low_confidence_rate,
++        semantic_contract_score,
++        diagnostics_repair_pressure,
++    );
+     EvaluationWorkspaceSnapshot {
+         objectives_completed: input.objectives_completed,
+         objectives_total: input.objectives_total,
+@@ -158,19 +194,19 @@
+         total_tasks: input.total_tasks,
+         open_issues: input.open_issues,
+         repeated_open_issues: input.repeated_open_issues,
+-        diagnostics_repair_pressure: diagnostics_repair_pressure_with_issues(
+-            &input.diagnostics,
+-            input.high_priority_open_issues,
+-        ),
++        diagnostics_repair_pressure,
+         semantic_fn_total: input.semantic_fn_total,
+         semantic_fn_with_any_error: input.semantic_fn_with_any_error,
+         semantic_fn_error_rate,
+         semantic_fn_intent_classified: input.semantic_fn_intent_classified,
++        semantic_fn_totalized,
++        semantic_fn_totalization_coverage,
+         semantic_fn_low_confidence: input.semantic_fn_low_confidence,
+         semantic_fn_intent_coverage: intent_coverage,
+         semantic_fn_low_confidence_rate,
+         structural_invariant_coverage: input.structural_invariant_coverage.clone(),
+         tlog_delta_signals: input.tlog_delta_signals.clone(),
++        eval_enforcement,
+         vector,
+     }
+ }
+@@ -188,6 +224,134 @@
+         1.0
+     } else {
+         safe_ratio(classified.min(fn_total) as f64, fn_total as f64).clamp(0.0, 1.0)
++    }
++}
++
++const EVAL_MAX_SEMANTIC_ERROR_RATE: f64 = 0.0;
++const EVAL_MIN_INTENT_TOTALIZATION_COVERAGE: f64 = 1.0;
++const EVAL_MAX_ACTIONABLE_LAG_TOTAL_MS: u64 = 300_000;
++const EVAL_MAX_PROMPT_TRUNCATIONS: usize = 0;
++const EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING: f64 = 0.75;
++const EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING: f64 = 0.25;
++const EVAL_MIN_SEMANTIC_CONTRACT_WARNING: f64 = 0.50;
++
++fn enforce_eval_thresholds(
++    input: &EvalInput,
++    semantic_fn_error_rate: f64,
++    semantic_fn_totalized: usize,
++    semantic_fn_totalization_coverage: f64,
++    semantic_fn_low_confidence_rate: f64,
++    semantic_contract_score: f64,
++    diagnostics_repair_pressure: f64,
++) -> EvalEnforcement {
++    let mut violations = Vec::new();
++    let mut warnings = Vec::new();
++
++    if input.semantic_fn_total > 0 && semantic_fn_error_rate > EVAL_MAX_SEMANTIC_ERROR_RATE {
++        violations.push(format!(
++            "semantic_errors={}/{} rate={:.4} > {:.4}",
++            input.semantic_fn_with_any_error,
++            input.semantic_fn_total,
++            semantic_fn_error_rate,
++            EVAL_MAX_SEMANTIC_ERROR_RATE
++        ));
++    }
++    if input.semantic_fn_total > 0
++        && semantic_fn_totalization_coverage < EVAL_MIN_INTENT_TOTALIZATION_COVERAGE
++    {
++        violations.push(format!(
++            "intent_totalization={}/{} coverage={:.4} < {:.4}",
++            semantic_fn_totalized,
++            input.semantic_fn_total,
++            semantic_fn_totalization_coverage,
++            EVAL_MIN_INTENT_TOTALIZATION_COVERAGE
++        ));
++    }
++    if input.tlog_delta_signals.actionable_lag_total_ms > EVAL_MAX_ACTIONABLE_LAG_TOTAL_MS {
++        violations.push(format!(
++            "actionable_lag_total_ms={} > {}",
++            input.tlog_delta_signals.actionable_lag_total_ms,
++            EVAL_MAX_ACTIONABLE_LAG_TOTAL_MS
++        ));
++    }
++    if input.tlog_delta_signals.prompt_truncations > EVAL_MAX_PROMPT_TRUNCATIONS {
++        violations.push(format!(
++            "prompt_truncations={} > {} dropped_bytes={}",
++            input.tlog_delta_signals.prompt_truncations,
++            EVAL_MAX_PROMPT_TRUNCATIONS,
++            input.tlog_delta_signals.prompt_truncation_dropped_bytes
++        ));
++    }
++    if input.tlog_delta_signals.unsafe_checkpoint_attempts > 0 {
++        violations.push(format!(
++            "unsafe_checkpoint_attempts={}",
++            input.tlog_delta_signals.unsafe_checkpoint_attempts
++        ));
++    }
++    if input.tlog_delta_signals.missing_action_results > 0 {
++        violations.push(format!(
++            "missing_action_results={}/{}",
++            input.tlog_delta_signals.missing_action_results,
++            input.tlog_delta_signals.llm_action_outputs
++        ));
++    }
++    if input.tlog_delta_signals.unmeasured_improvement_attempts > 0 {
++        violations.push(format!(
++            "unmeasured_improvement_attempts={}/{}",
++            input.tlog_delta_signals.unmeasured_improvement_attempts,
++            input.tlog_delta_signals.improvement_attempts
++        ));
++    }
++    if input.tlog_delta_signals.unvalidated_improvement_attempts > 0 {
++        violations.push(format!(
++            "unvalidated_improvement_attempts={}/{}",
++            input.tlog_delta_signals.unvalidated_improvement_attempts,
++            input.tlog_delta_signals.improvement_attempts
++        ));
++    }
++    if input.tlog_delta_signals.regressed_improvement_attempts > 0 {
++        violations.push(format!(
++            "regressed_improvement_attempts={}/{}",
++            input.tlog_delta_signals.regressed_improvement_attempts,
++            input.tlog_delta_signals.measured_improvement_attempts
++        ));
++    }
++
++    if input.semantic_fn_total > 0
++        && input.semantic_fn_intent_coverage < EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING
++    {
++        warnings.push(format!(
++            "meaningful_intent_coverage={:.4} < {:.4}",
++            input.semantic_fn_intent_coverage, EVAL_MIN_MEANINGFUL_INTENT_COVERAGE_WARNING
++        ));
++    }
++    if input.semantic_fn_total > 0
++        && semantic_fn_low_confidence_rate > EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING
++    {
++        warnings.push(format!(
++            "low_confidence_rate={:.4} > {:.4}",
++            semantic_fn_low_confidence_rate, EVAL_MAX_LOW_CONFIDENCE_RATE_WARNING
++        ));
++    }
++    if semantic_contract_score < EVAL_MIN_SEMANTIC_CONTRACT_WARNING {
++        warnings.push(format!(
++            "semantic_contract={:.4} < {:.4}",
++            semantic_contract_score, EVAL_MIN_SEMANTIC_CONTRACT_WARNING
++        ));
++    }
++    if diagnostics_repair_pressure > 0.0 {
++        warnings.push(format!(
++            "diagnostics_repair_pressure={:.4}",
++            diagnostics_repair_pressure
++        ));
++    }
++
++    EvalEnforcement {
++        passed: violations.is_empty(),
++        violation_count: violations.len(),
++        violations,
++        warning_count: warnings.len(),
++        warnings,
+     }
+ }
+ 
+@@ -373,6 +537,8 @@
+     pub unapplied_artifact_writes: usize,
+     pub git_checkpoint_blocked: usize,
+     pub unsafe_checkpoint_attempts: usize,
++    pub prompt_truncations: usize,
++    pub prompt_truncation_dropped_bytes: u64,
+     pub supervisor_restart_requests: usize,
+     pub supervisor_child_starts: usize,
+     pub restart_requests_without_child_start: usize,
+@@ -511,6 +677,17 @@
+             Event::Effect {
+                 event: EffectEvent::LlmErrorBoundary { .. },
+             } => signals.llm_error_boundaries += 1,
++            Event::Effect {
++                event:
++                    EffectEvent::PromptTruncationRecorded {
++                        dropped_bytes, ..
++                    },
++            } => {
++                signals.prompt_truncations += 1;
++                signals.prompt_truncation_dropped_bytes = signals
++                    .prompt_truncation_dropped_bytes
++                    .saturating_add(*dropped_bytes as u64);
++            }
+             Event::Effect {
+                 event: EffectEvent::WorkspaceArtifactWriteRequested { signature, .. },
+             } => {
+@@ -1337,6 +1514,54 @@
+     }
+ 
+     #[test]
++    fn compute_eval_enforces_hard_semantic_and_totalization_thresholds() {
++        let mut input = base_eval_input();
++        input.semantic_fn_total = 10;
++        input.semantic_fn_with_any_error = 1;
++        input.semantic_fn_intent_classified = 6;
++        input.semantic_fn_low_confidence = 3;
++
++        let snapshot = compute_eval(&input);
++
++        assert_eq!(snapshot.semantic_fn_totalized, 9);
++        assert!((snapshot.semantic_fn_totalization_coverage - 0.9).abs() < 0.000_001);
++        assert!(!snapshot.eval_enforcement.passed);
++        assert!(snapshot
++            .eval_enforcement
++            .violations
++            .iter()
++            .any(|v| v.contains("semantic_errors=1/10")));
++        assert!(snapshot
++            .eval_enforcement
++            .violations
++            .iter()
++            .any(|v| v.contains("intent_totalization=9/10")));
++    }
++
++    #[test]
++    fn compute_eval_treats_totalized_low_confidence_as_warning_not_hard_violation() {
++        let mut input = base_eval_input();
++        input.semantic_fn_total = 10;
++        input.semantic_fn_with_any_error = 0;
++        input.semantic_fn_intent_classified = 6;
++        input.semantic_fn_intent_coverage = 0.6;
++        input.semantic_fn_low_confidence = 4;
++
++        let snapshot = compute_eval(&input);
++
++        assert_eq!(snapshot.semantic_fn_totalized, 10);
++        assert!((snapshot.semantic_fn_totalization_coverage - 1.0).abs() < 0.000_001);
++        assert!(snapshot.eval_enforcement.passed);
++        assert_eq!(snapshot.eval_enforcement.violation_count, 0);
++        assert!(snapshot.eval_enforcement.warning_count > 0);
++        assert!(snapshot
++            .eval_enforcement
++            .warnings
++            .iter()
++            .any(|w| w.contains("low_confidence_rate=0.4000")));
++    }
++
++    #[test]
+     fn issue_health_drops_when_same_issue_reopened() {
+         let issues = IssuesFile {
+             version: 1,
+@@ -1663,6 +1888,33 @@
+     }
+ 
+     #[test]
++    fn tlog_delta_invariants_count_prompt_truncations() {
++        let records = vec![crate::tlog::TlogRecord {
++            seq: 1,
++            ts_ms: 1,
++            event: Event::effect(EffectEvent::PromptTruncationRecorded {
++                role: "planner".to_string(),
++                prompt_kind: "main".to_string(),
++                step: 1,
++                command_id: "cmd".to_string(),
++                endpoint_id: "ep".to_string(),
++                heading: "section".to_string(),
++                raw_bytes: 120_000,
++                kept_bytes: 80_000,
++                dropped_bytes: 40_000,
++                policy: "drop-oldest".to_string(),
++                body_hash: "hash".to_string(),
++            }),
++        }];
++
++        let signals = evaluate_tlog_delta_invariants(&records);
++
++        assert_eq!(signals.prompt_truncations, 1);
++        assert_eq!(signals.prompt_truncation_dropped_bytes, 40_000);
++        assert!(signals.score < 1.0);
++    }
++
++    #[test]
+     fn tlog_delta_invariants_require_eval_after_improvement_action() {
+         let mut records = vec![crate::tlog::TlogRecord {
+             seq: 1,
+@@ -1736,9 +1988,18 @@
+                 semantic_fn_total: 0,
+                 semantic_fn_with_any_error: 0,
+                 semantic_fn_intent_classified: 0,
++                semantic_fn_totalized: 0,
++                semantic_fn_totalization_coverage: 1.0,
+                 semantic_fn_low_confidence: 0,
+                 semantic_fn_intent_coverage: 1.0,
+                 semantic_fn_low_confidence_rate: 0.0,
++                eval_enforcement_passed: true,
++                eval_enforcement_violation_count: 0,
++                eval_enforcement_violations: Vec::new(),
++                eval_enforcement_warning_count: 0,
++                eval_enforcement_warnings: Vec::new(),
++                tlog_prompt_truncation_count: 0,
++                tlog_prompt_truncation_dropped_bytes: 0,
+             }),
+         });
+ 
+@@ -1866,9 +2127,18 @@
+                     semantic_fn_total: 0,
+                     semantic_fn_with_any_error: 0,
+                     semantic_fn_intent_classified: 0,
++                    semantic_fn_totalized: 0,
++                    semantic_fn_totalization_coverage: 1.0,
+                     semantic_fn_low_confidence: 0,
+                     semantic_fn_intent_coverage: 1.0,
+                     semantic_fn_low_confidence_rate: 0.0,
++                    eval_enforcement_passed: true,
++                    eval_enforcement_violation_count: 0,
++                    eval_enforcement_violations: Vec::new(),
++                    eval_enforcement_warning_count: 0,
++                    eval_enforcement_warnings: Vec::new(),
++                    tlog_prompt_truncation_count: 0,
++                    tlog_prompt_truncation_dropped_bytes: 0,
+                 }),
+             },
+         ];
+*** Update File: src/events.rs
+@@ -550,11 +550,29 @@
+         #[serde(default)]
+         semantic_fn_intent_classified: usize,
+         #[serde(default)]
++        semantic_fn_totalized: usize,
++        #[serde(default)]
++        semantic_fn_totalization_coverage: f64,
++        #[serde(default)]
+         semantic_fn_low_confidence: usize,
+         #[serde(default)]
+         semantic_fn_intent_coverage: f64,
+         #[serde(default)]
+         semantic_fn_low_confidence_rate: f64,
++        #[serde(default)]
++        eval_enforcement_passed: bool,
++        #[serde(default)]
++        eval_enforcement_violation_count: usize,
++        #[serde(default)]
++        eval_enforcement_violations: Vec<String>,
++        #[serde(default)]
++        eval_enforcement_warning_count: usize,
++        #[serde(default)]
++        eval_enforcement_warnings: Vec<String>,
++        #[serde(default)]
++        tlog_prompt_truncation_count: usize,
++        #[serde(default)]
++        tlog_prompt_truncation_dropped_bytes: u64,
+     },
+     /// Last completed action snapshot used to resume after process restarts.
+     PostRestartResultRecorded {
+*** Update File: src/eval_driver.rs
+@@ -115,9 +115,20 @@
+         semantic_fn_total: snapshot.semantic_fn_total,
+         semantic_fn_with_any_error: snapshot.semantic_fn_with_any_error,
+         semantic_fn_intent_classified: snapshot.semantic_fn_intent_classified,
++        semantic_fn_totalized: snapshot.semantic_fn_totalized,
++        semantic_fn_totalization_coverage: snapshot.semantic_fn_totalization_coverage,
+         semantic_fn_low_confidence: snapshot.semantic_fn_low_confidence,
+         semantic_fn_intent_coverage: snapshot.semantic_fn_intent_coverage,
+         semantic_fn_low_confidence_rate: snapshot.semantic_fn_low_confidence_rate,
++        eval_enforcement_passed: snapshot.eval_enforcement.passed,
++        eval_enforcement_violation_count: snapshot.eval_enforcement.violation_count,
++        eval_enforcement_violations: snapshot.eval_enforcement.violations.clone(),
++        eval_enforcement_warning_count: snapshot.eval_enforcement.warning_count,
++        eval_enforcement_warnings: snapshot.eval_enforcement.warnings.clone(),
++        tlog_prompt_truncation_count: snapshot.tlog_delta_signals.prompt_truncations,
++        tlog_prompt_truncation_dropped_bytes: snapshot
++            .tlog_delta_signals
++            .prompt_truncation_dropped_bytes,
+     };
+ 
+     if let Some(w) = writer {
+*** Update File: src/complexity.rs
+@@ -1835,6 +1835,14 @@
+         json!(eval.semantic_fn_intent_classified),
+     );
+     eval_report.insert(
++        "semantic_fn_totalized".into(),
++        json!(eval.semantic_fn_totalized),
++    );
++    eval_report.insert(
++        "semantic_fn_totalization_coverage".into(),
++        json!(eval.semantic_fn_totalization_coverage),
++    );
++    eval_report.insert(
+         "semantic_fn_low_confidence".into(),
+         json!(eval.semantic_fn_low_confidence),
+     );
+@@ -1847,6 +1855,26 @@
+         json!(eval.semantic_fn_low_confidence_rate),
+     );
+     eval_report.insert(
++        "eval_enforcement_passed".into(),
++        json!(eval.eval_enforcement.passed),
++    );
++    eval_report.insert(
++        "eval_enforcement_violation_count".into(),
++        json!(eval.eval_enforcement.violation_count),
++    );
++    eval_report.insert(
++        "eval_enforcement_violations".into(),
++        json!(&eval.eval_enforcement.violations),
++    );
++    eval_report.insert(
++        "eval_enforcement_warning_count".into(),
++        json!(eval.eval_enforcement.warning_count),
++    );
++    eval_report.insert(
++        "eval_enforcement_warnings".into(),
++        json!(&eval.eval_enforcement.warnings),
++    );
++    eval_report.insert(
+         "diagnostics_repair_pressure".into(),
+         json!(eval.diagnostics_repair_pressure),
+     );
+@@ -1901,6 +1929,14 @@
+     eval_report.insert(
+         "last_executor_diff_payload_bytes".into(),
+         json!(eval.tlog_delta_signals.last_executor_diff_payload_bytes),
++    );
++    eval_report.insert(
++        "tlog_prompt_truncation_count".into(),
++        json!(eval.tlog_delta_signals.prompt_truncations),
++    );
++    eval_report.insert(
++        "tlog_prompt_truncation_dropped_bytes".into(),
++        json!(eval.tlog_delta_signals.prompt_truncation_dropped_bytes),
+     );
+     eval_report.insert(
+         "supervisor_restart_requests".into(),
+*** Update File: src/prompt_inputs.rs
+@@ -448,6 +448,7 @@
+     let get_f64_or = |key: &str, default: f64| {
+         eval.get(key).and_then(|v| v.as_f64()).unwrap_or(default)
+     };
++    let get_bool = |key: &str| eval.get(key).and_then(|v| v.as_bool()).unwrap_or(false);
+     let get_u64 = |key: &str| eval.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
+     let get_str = |key: &str| eval.get(key).and_then(|v| v.as_str()).unwrap_or("");
+     let overall = get_f64("overall_score");
+@@ -493,6 +494,10 @@
+     } else {
+         get_f64("semantic_fn_low_confidence_rate")
+     };
++    let semantic_fn_totalized = semantic_fn_intent_classified
++        .saturating_add(semantic_fn_low_confidence)
++        .min(semantic_fn_total);
++    let semantic_fn_totalization_coverage = ratio(semantic_fn_totalized, semantic_fn_total);
+     let objectives_ratio = live_done_total_ratio(workspace.join(OBJECTIVES_FILE), "objectives");
+     let tasks_ratio = live_done_total_ratio(workspace.join(MASTER_PLAN_FILE), "tasks");
+     let objective_progress = objectives_ratio
+@@ -536,6 +541,11 @@
+         .unwrap_or(("unknown", 0.0));
+ 
+     let directive = eval_score_directive(weakest_name);
++    let eval_gate = if get_bool("eval_enforcement_passed") {
++        "pass"
++    } else {
++        "fail"
++    };
+ 
+     let objectives = objectives_ratio
+         .map(|(done, total)| format!("{done}/{total}"))
+@@ -560,7 +570,10 @@
+ semantic_contract={semantic_contract:.3}  \
+ semantic_errors={semantic_fn_with_any_error}/{semantic_fn_total}({semantic_fn_error_rate:.4})  \
+ semantic_intent={semantic_fn_intent_classified}/{semantic_fn_total}({semantic_fn_intent_coverage:.4})  \
++semantic_totalized={semantic_fn_totalized}/{semantic_fn_total}({semantic_fn_totalization_coverage:.4})  \
+ semantic_low_confidence={semantic_fn_low_confidence}({semantic_fn_low_confidence_rate:.4})\n\
++eval_gate={eval_gate}  violations={eval_violations}  warnings={eval_warnings}  \
++prompt_truncations={prompt_truncations}  truncation_dropped={truncation_dropped}B\n\
+ lag_action={lag_kind}({lag_ms}ms)  payload={payload_kind}({payload_bytes}B)  \
+ plan_payload={plan_payload_bytes}B  measured_improvements={measured}/{attempts}  \
+ unmeasured={unmeasured}  validated_improvements={validated}/{attempts}  \
+@@ -570,6 +583,10 @@
+ recovery_suppressed={recovery_suppressed}\n\
+ → To raise score: {directive}\n",
+         lag_kind = get_str("tlog_dominant_actionable_lag_kind"),
++        eval_violations = get_u64("eval_enforcement_violation_count"),
++        eval_warnings = get_u64("eval_enforcement_warning_count"),
++        prompt_truncations = get_u64("tlog_prompt_truncation_count"),
++        truncation_dropped = get_u64("tlog_prompt_truncation_dropped_bytes"),
+         lag_ms = get_u64("tlog_dominant_actionable_lag_kind_ms"),
+         payload_kind = get_str("tlog_dominant_payload_kind"),
+         payload_bytes = get_u64("tlog_dominant_payload_kind_bytes"),
+*** End Patch

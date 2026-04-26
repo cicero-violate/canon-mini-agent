@@ -550,11 +550,29 @@ pub enum EffectEvent {
         #[serde(default)]
         semantic_fn_intent_classified: usize,
         #[serde(default)]
+        semantic_fn_totalized: usize,
+        #[serde(default)]
+        semantic_fn_totalization_coverage: f64,
+        #[serde(default)]
         semantic_fn_low_confidence: usize,
         #[serde(default)]
         semantic_fn_intent_coverage: f64,
         #[serde(default)]
         semantic_fn_low_confidence_rate: f64,
+        #[serde(default)]
+        eval_enforcement_passed: bool,
+        #[serde(default)]
+        eval_enforcement_violation_count: usize,
+        #[serde(default)]
+        eval_enforcement_violations: Vec<String>,
+        #[serde(default)]
+        eval_enforcement_warning_count: usize,
+        #[serde(default)]
+        eval_enforcement_warnings: Vec<String>,
+        #[serde(default)]
+        tlog_prompt_truncation_count: usize,
+        #[serde(default)]
+        tlog_prompt_truncation_dropped_bytes: u64,
     },
     /// Last completed action snapshot used to resume after process restarts.
     PostRestartResultRecorded {

@@ -108,13 +108,13 @@ fn validate_executor_phase(state: &SystemState, lane: Option<usize>) -> Result<(
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: lane_less_executor_phase
 /// Inputs: &system_state::SystemState
 /// Outputs: std::result::Result<(), std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: validates lane-less executor phase scheduling without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: lane-less executor phase is allowed only during bootstrap or when scheduled phase is executor
+/// Failure: returns validation error for illegal lane-less executor transition
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_lane_less_executor_phase(state: &SystemState) -> Result<(), String> {
     if state.phase == "bootstrap" || state.scheduled_phase.as_deref() == Some("executor") {
