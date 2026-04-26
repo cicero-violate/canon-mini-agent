@@ -1748,70 +1748,7 @@ fn build_complexity_report(
         "recovery_effectiveness".into(),
         json!(eval.vector.recovery_effectiveness),
     );
-    eval_report.insert(
-        "improvement_attempts".into(),
-        json!(eval.tlog_delta_signals.improvement_attempts),
-    );
-    eval_report.insert(
-        "measured_improvement_attempts".into(),
-        json!(eval.tlog_delta_signals.measured_improvement_attempts),
-    );
-    eval_report.insert(
-        "unmeasured_improvement_attempts".into(),
-        json!(eval.tlog_delta_signals.unmeasured_improvement_attempts),
-    );
-    eval_report.insert(
-        "validated_improvement_attempts".into(),
-        json!(eval.tlog_delta_signals.validated_improvement_attempts),
-    );
-    eval_report.insert(
-        "unvalidated_improvement_attempts".into(),
-        json!(eval.tlog_delta_signals.unvalidated_improvement_attempts),
-    );
-    eval_report.insert(
-        "non_regressed_improvement_attempts".into(),
-        json!(eval.tlog_delta_signals.non_regressed_improvement_attempts),
-    );
-    eval_report.insert(
-        "regressed_improvement_attempts".into(),
-        json!(eval.tlog_delta_signals.regressed_improvement_attempts),
-    );
-    eval_report.insert(
-        "eval_measurement_points".into(),
-        json!(eval.tlog_delta_signals.eval_measurement_points),
-    );
-    eval_report.insert(
-        "measurement_regressions".into(),
-        json!(eval.tlog_delta_signals.measurement_regressions),
-    );
-    eval_report.insert(
-        "recovery_attempts".into(),
-        json!(eval.tlog_delta_signals.recovery_attempts),
-    );
-    eval_report.insert(
-        "recovery_successes".into(),
-        json!(eval.tlog_delta_signals.recovery_successes),
-    );
-    eval_report.insert(
-        "recovery_failures".into(),
-        json!(eval.tlog_delta_signals.recovery_failures),
-    );
-    eval_report.insert(
-        "recovery_suppressed".into(),
-        json!(eval.tlog_delta_signals.recovery_suppressed),
-    );
-    eval_report.insert(
-        "recovery_loop_breaks".into(),
-        json!(eval.tlog_delta_signals.recovery_loop_breaks),
-    );
-    eval_report.insert(
-        "recovery_regressions".into(),
-        json!(eval.tlog_delta_signals.recovery_regressions),
-    );
-    eval_report.insert(
-        "recovery_measurement_points".into(),
-        json!(eval.tlog_delta_signals.recovery_measurement_points),
-    );
+    append_tlog_delta_eval_report_fields(eval, &mut eval_report);
     eval_report.insert(
         "graph_risk_count".into(),
         json!(eval.structural_invariant_coverage.graph_risk_count),
@@ -1985,6 +1922,76 @@ fn build_complexity_report(
         eval_report,
         drift,
     )
+}
+
+fn append_tlog_delta_eval_report_fields(
+    eval: &crate::evaluation::EvaluationWorkspaceSnapshot,
+    eval_report: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    eval_report.insert(
+        "improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.improvement_attempts),
+    );
+    eval_report.insert(
+        "measured_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.measured_improvement_attempts),
+    );
+    eval_report.insert(
+        "unmeasured_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.unmeasured_improvement_attempts),
+    );
+    eval_report.insert(
+        "validated_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.validated_improvement_attempts),
+    );
+    eval_report.insert(
+        "unvalidated_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.unvalidated_improvement_attempts),
+    );
+    eval_report.insert(
+        "non_regressed_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.non_regressed_improvement_attempts),
+    );
+    eval_report.insert(
+        "regressed_improvement_attempts".into(),
+        json!(eval.tlog_delta_signals.regressed_improvement_attempts),
+    );
+    eval_report.insert(
+        "eval_measurement_points".into(),
+        json!(eval.tlog_delta_signals.eval_measurement_points),
+    );
+    eval_report.insert(
+        "measurement_regressions".into(),
+        json!(eval.tlog_delta_signals.measurement_regressions),
+    );
+    eval_report.insert(
+        "recovery_attempts".into(),
+        json!(eval.tlog_delta_signals.recovery_attempts),
+    );
+    eval_report.insert(
+        "recovery_successes".into(),
+        json!(eval.tlog_delta_signals.recovery_successes),
+    );
+    eval_report.insert(
+        "recovery_failures".into(),
+        json!(eval.tlog_delta_signals.recovery_failures),
+    );
+    eval_report.insert(
+        "recovery_suppressed".into(),
+        json!(eval.tlog_delta_signals.recovery_suppressed),
+    );
+    eval_report.insert(
+        "recovery_loop_breaks".into(),
+        json!(eval.tlog_delta_signals.recovery_loop_breaks),
+    );
+    eval_report.insert(
+        "recovery_regressions".into(),
+        json!(eval.tlog_delta_signals.recovery_regressions),
+    );
+    eval_report.insert(
+        "recovery_measurement_points".into(),
+        json!(eval.tlog_delta_signals.recovery_measurement_points),
+    );
 }
 
 fn build_complexity_report_value(

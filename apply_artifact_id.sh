@@ -1,0 +1,300 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO="${1:-$(pwd)}"
+cd "$REPO"
+
+/usr/bin/python3 -S - <<'PY'
+import subprocess
+
+patch = r"""*** Begin Patch
+*** Update File: src/events.rs
+@@
+     WorkspaceArtifactWriteRequested {
++        #[serde(default)]
++        artifact_id: String,
+         artifact: String,
+         op: String,
+         target: String,
+         subject: String,
+         signature: String,
+     },
+     WorkspaceArtifactWriteApplied {
++        #[serde(default)]
++        artifact_id: String,
+         artifact: String,
+         op: String,
+         target: String,
+         subject: String,
+         signature: String,
+*** Update File: src/logging.rs
+@@
+ pub fn record_workspace_artifact_effect(
+     workspace: &std::path::Path,
+     requested: bool,
+     artifact: &str,
+     op: &str,
+@@
+     subject: &str,
+     signature: &str,
+ ) -> Result<()> {
+-    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+-    let state = crate::system_state::SystemState::new(&[], 0);
+-    let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
+-        state,
+-        crate::tlog::Tlog::open(&tlog_path),
+-        workspace.to_path_buf(),
+-    )?;
+-    let effect = if requested {
+-        crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
+-            artifact: artifact.to_string(),
+-            op: op.to_string(),
+-            target: target.to_string(),
+-            subject: subject.to_string(),
+-            signature: signature.to_string(),
+-        }
+-    } else {
+-        crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
+-            artifact: artifact.to_string(),
+-            op: op.to_string(),
+-            target: target.to_string(),
+-            subject: subject.to_string(),
+-            signature: signature.to_string(),
+-        }
+-    };
+-    writer.try_record_effect(effect).map_err(|err| {
+-        anyhow::anyhow!(
+-            "canonical effect append failed for {} {} {}: {err:#}",
+-            artifact,
+-            op,
+-            subject
+-        )
+-    })
++    let artifact_id = workspace_artifact_id(artifact, target, subject, signature);
++    record_workspace_artifact_effect_with_id(
++        workspace,
++        requested,
++        &artifact_id,
++        artifact,
++        op,
++        target,
++        subject,
++        signature,
++    )
+ }
+@@
+ pub fn artifact_write_signature(parts: &[&str]) -> String {
+     let mut hasher = DefaultHasher::new();
+     parts.hash(&mut hasher);
+     format!("{:016x}", hasher.finish())
+ }
+
++pub fn workspace_artifact_id(
++    kind: &str,
++    target: &str,
++    subject: &str,
++    content_hash: &str,
++) -> String {
++    let mut hasher = DefaultHasher::new();
++    (kind, target, subject, content_hash).hash(&mut hasher);
++    format!("artifact-{:016x}", hasher.finish())
++}
++
++fn record_workspace_artifact_effect_with_id(
++    workspace: &std::path::Path,
++    requested: bool,
++    artifact_id: &str,
++    artifact: &str,
++    op: &str,
++    target: &str,
++    subject: &str,
++    signature: &str,
++) -> Result<()> {
++    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
++    let state = crate::system_state::SystemState::new(&[], 0);
++    let mut writer = crate::canonical_writer::CanonicalWriter::try_new(
++        state,
++        crate::tlog::Tlog::open(&tlog_path),
++        workspace.to_path_buf(),
++    )?;
++    let effect = if requested {
++        crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
++            artifact_id: artifact_id.to_string(),
++            artifact: artifact.to_string(),
++            op: op.to_string(),
++            target: target.to_string(),
++            subject: subject.to_string(),
++            signature: signature.to_string(),
++        }
++    } else {
++        crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
++            artifact_id: artifact_id.to_string(),
++            artifact: artifact.to_string(),
++            op: op.to_string(),
++            target: target.to_string(),
++            subject: subject.to_string(),
++            signature: signature.to_string(),
++        }
++    };
++    writer.try_record_effect(effect).map_err(|err| {
++        anyhow::anyhow!(
++            "canonical effect append failed for {} {} {}: {err:#}",
++            artifact,
++            op,
++            subject
++        )
++    })
++}
++
+ fn file_snapshot(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
+@@
+-    let signature = artifact_write_signature(&[artifact, op, subject, &contents.len().to_string()]);
++    let content_hash = stable_hash_hex(contents);
++    let signature = artifact_write_signature(&[artifact, op, subject, &content_hash]);
+     let target = path.to_string_lossy().into_owned();
+-    record_workspace_artifact_effect(workspace, true, artifact, op, &target, subject, &signature)?;
++    let artifact_id = workspace_artifact_id(artifact, &target, subject, &content_hash);
++    record_workspace_artifact_effect_with_id(
++        workspace,
++        true,
++        &artifact_id,
++        artifact,
++        op,
++        &target,
++        subject,
++        &signature,
++    )?;
+@@
+-    if let Err(err) = record_workspace_artifact_effect(
+-        workspace, false, artifact, op, &target, subject, &signature,
+-    ) {
++    if let Err(err) = record_workspace_artifact_effect_with_id(
++        workspace,
++        false,
++        &artifact_id,
++        artifact,
++        op,
++        &target,
++        subject,
++        &signature,
++    ) {
+         restore_file_snapshot(path, &snapshot)?;
+         return Err(err);
+     }
+@@
+     use super::{
+         append_orchestration_trace, log_error_event, log_paths, now_ms, record_prompt_overflow,
+-        LogPaths, LOG_PATHS,
++        stable_hash_hex, workspace_artifact_id, write_projection_with_artifact_effects, LogPaths,
++        LOG_PATHS,
+     };
+@@
+     fn assert_common_error_shape(record: &Value, actor: &str, phase: &str, step: Option<u64>) {
+         assert_eq!(record.get("kind").and_then(|v| v.as_str()), Some("error"));
+         assert_eq!(record.get("phase").and_then(|v| v.as_str()), Some(phase));
+         assert_eq!(record.get("actor").and_then(|v| v.as_str()), Some(actor));
+         assert_eq!(record.get("step").and_then(|v| v.as_u64()), step);
+@@
+             "meta must be a JSON object"
+         );
+     }
++
++    #[test]
++    fn workspace_artifact_write_events_include_stable_artifact_id() {
++        let _guard = global_state_lock().lock().expect("lock global state");
++        let workspace = temp_workspace("artifact-id");
++        let path = workspace.join("agent_state").join("artifact_id_test.json");
++        let contents = "{\"ok\":true}\n";
++        let target = path.to_string_lossy().into_owned();
++        let content_hash = stable_hash_hex(contents);
++        let expected_id = workspace_artifact_id(
++            "agent_state/artifact_id_test.json",
++            &target,
++            "artifact_id_test",
++            &content_hash,
++        );
++
++        write_projection_with_artifact_effects(
++            &workspace,
++            &path,
++            "agent_state/artifact_id_test.json",
++            "write",
++            "artifact_id_test",
++            contents,
++        )
++        .expect("write projection");
++
++        let tlog_raw = fs::read_to_string(workspace.join("agent_state").join("tlog.ndjson"))
++            .expect("read tlog");
++        let mut artifact_ids = Vec::new();
++        for line in tlog_raw.lines() {
++            let record: Value = serde_json::from_str(line).expect("parse tlog record");
++            let Some(event) = record.get("event").and_then(|v| v.get("event")) else {
++                continue;
++            };
++            let kind = event.get("kind").and_then(|v| v.as_str());
++            if matches!(
++                kind,
++                Some("workspace_artifact_write_requested")
++                    | Some("workspace_artifact_write_applied")
++            ) {
++                artifact_ids.push(
++                    event
++                        .get("artifact_id")
++                        .and_then(|v| v.as_str())
++                        .expect("artifact_id")
++                        .to_string(),
++                );
++            }
++        }
++
++        assert_eq!(artifact_ids, vec![expected_id.clone(), expected_id]);
++    }
+
+     fn ensure_test_action_log_path() -> std::path::PathBuf {
+*** Update File: src/tools_foundation.rs
+@@
+ ) -> Result<()> {
++    let artifact_id = crate::logging::workspace_artifact_id(artifact, target, subject, signature);
+     let effect = if requested {
+         crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
++            artifact_id: artifact_id.clone(),
+             artifact: artifact.to_string(),
+             op: op.to_string(),
+             target: target.to_string(),
+@@
+     } else {
+         crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
++            artifact_id,
+             artifact: artifact.to_string(),
+             op: op.to_string(),
+             target: target.to_string(),
+*** End Patch
+"""
+subprocess.run(
+    ["/opt/apply_patch/apply_patch_v3"],
+    input=patch,
+    text=True,
+    check=True,
+    cwd=".",
+    env={
+        "PYTHONPATH": "/opt/pyvenv/lib/python3.13/site-packages",
+        "PATH": "/usr/bin",
+    },
+)
+PY
+
+/usr/bin/python3 -S - <<'PY'
+from pathlib import Path
+
+checks = {
+    "events artifact_id fields": Path("src/events.rs").read_text().count("artifact_id: String") >= 2,
+    "logging workspace_artifact_id": "pub fn workspace_artifact_id" in Path("src/logging.rs").read_text(),
+    "logging artifact_id test": "workspace_artifact_write_events_include_stable_artifact_id" in Path("src/logging.rs").read_text(),
+    "tools artifact_id constructor": "crate::logging::workspace_artifact_id" in Path("src/tools_foundation.rs").read_text(),
+}
+failed = [name for name, ok in checks.items() if not ok]
+if failed:
+    raise SystemExit("artifact_id marker checks failed: " + ", ".join(failed))
+print("artifact_id markers: ok")
+PY

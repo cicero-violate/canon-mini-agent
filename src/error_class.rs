@@ -415,6 +415,8 @@ fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorCl
     }
 }
 
+/// Intent: pure_transform
+/// Resource: action_payload
 fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> {
     match action_kind {
         "canonical_state_bypass" => Some(ErrorClass::SecondMutationPath),

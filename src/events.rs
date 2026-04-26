@@ -309,6 +309,8 @@ pub enum EffectEvent {
         signature: String,
     },
     WorkspaceArtifactWriteRequested {
+        #[serde(default)]
+        artifact_id: String,
         artifact: String,
         op: String,
         target: String,
@@ -316,6 +318,8 @@ pub enum EffectEvent {
         signature: String,
     },
     WorkspaceArtifactWriteApplied {
+        #[serde(default)]
+        artifact_id: String,
         artifact: String,
         op: String,
         target: String,

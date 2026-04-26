@@ -101,8 +101,10 @@ fn emit_workspace_artifact_effect(
     subject: &str,
     signature: &str,
 ) -> Result<()> {
+    let artifact_id = crate::logging::workspace_artifact_id(artifact, target, subject, signature);
     let effect = if requested {
         crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
+            artifact_id: artifact_id.clone(),
             artifact: artifact.to_string(),
             op: op.to_string(),
             target: target.to_string(),
@@ -111,6 +113,7 @@ fn emit_workspace_artifact_effect(
         }
     } else {
         crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
+            artifact_id,
             artifact: artifact.to_string(),
             op: op.to_string(),
             target: target.to_string(),
