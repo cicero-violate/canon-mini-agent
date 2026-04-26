@@ -426,16 +426,28 @@ fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> 
         "effectful_state_advance" => Some(ErrorClass::EffectfulStateAdvanceWithoutControlEvent),
         "ambiguous_control_event" => Some(ErrorClass::AmbiguousControlEvent),
         "plan_preflight" => Some(ErrorClass::PlanPreflightFailed),
-        "route_dispatch" | "handoff_delivery" => invalid_route_class(),
+        "route_dispatch" | "handoff_delivery" => routed_action_failure_class(),
         "step_limit" => Some(ErrorClass::StepLimitExceeded),
         "livelock" => Some(ErrorClass::LivelockDetected),
         "build_gate" => Some(ErrorClass::CompileError),
         "solo_completion_gate" | "diagnostics_evidence_gate" => verification_failed_class(),
         "reaction_only" => reaction_only_class(),
-        "executor_submit_timeout" | "submit_ack_timeout" => llm_timeout_class(),
-        "repeated_failed_action" | "idle_streak" => invalid_schema_class(),
+        "executor_submit_timeout" | "submit_ack_timeout" => timeout_action_failure_class(),
+        "repeated_failed_action" | "idle_streak" => schema_action_failure_class(),
         _ => None,
     }
+}
+
+fn timeout_action_failure_class() -> Option<ErrorClass> {
+    llm_timeout_class()
+}
+
+fn schema_action_failure_class() -> Option<ErrorClass> {
+    invalid_schema_class()
+}
+
+fn routed_action_failure_class() -> Option<ErrorClass> {
+    invalid_route_class()
 }
 
 fn reaction_only_class() -> Option<ErrorClass> {

@@ -57,16 +57,26 @@ fn build_guardrail_message_envelope(
     status: &str,
     payload: Value,
 ) -> Value {
+    let observation = guardrail_wrapped_message_observation();
+    let rationale = guardrail_wrapped_message_rationale();
     json!({
         "action": "message",
         "from": from,
         "to": to,
         "type": msg_type,
         "status": status,
-        "observation": "Model responded with diff-only text; wrapping as message payload.",
-        "rationale": "Diff output must be wrapped in a valid message action.",
+        "observation": observation,
+        "rationale": rationale,
         "payload": payload
     })
+}
+
+fn guardrail_wrapped_message_observation() -> &'static str {
+    "Model responded with diff-only text; wrapping as message payload."
+}
+
+fn guardrail_wrapped_message_rationale() -> &'static str {
+    "Diff output must be wrapped in a valid message action."
 }
 
 /// Intent: guardrail_action_recovery
