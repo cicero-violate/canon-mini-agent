@@ -1,11 +1,11 @@
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: agent_state/orchestrator/stage_graph.json
 /// Inputs: &std::path::Path
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: writes live stage graph artifact; emits stderr on write failure
+/// Forbidden: panics, mutation outside stage graph artifact
+/// Invariants: write failures are non-fatal and reported to stderr
+/// Failure: swallowed write error after stderr diagnostic
 /// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn write_stage_graph(workspace: &Path) {
     if let Err(e) = write_stage_graph_inner(workspace, "agent_state/orchestrator/stage_graph.json")

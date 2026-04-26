@@ -63,8 +63,25 @@ Invariant:
 ∀K: repeated(K,T) ≥ Θ_K ⇒ typed RecoveryDecision(K)
 ```
 
+The default recovery table must contain exactly one enabled threshold for every
+`ErrorClass`. Structural safety violations escalate to solo, runtime-state
+divergence replays/purges invalid runtime state, transport failures retire and
+retry the role, compile/verification evidence routes back to executor, missing
+targets route back to planner, and unknown/repeated schema/blocker failures
+route to diagnostics.
+
+Every recovery threshold carries a retry budget. If the recent tlog window
+already contains `max_attempts` `RecoveryTriggered` records for the same
+`ErrorClass`, runtime must not actuate that recovery again. It must emit
+`RecoverySuppressed { suppression_reason: "retry_budget_exhausted ..." }`
+instead, preserving forward progress evidence while preventing recovery
+livelock.
+
 Eval must report recovery attempts, successes, failures, suppressions, loop
-breaks, regressions, measurement points, and recovery effectiveness.
+breaks, regressions, measurement points, and recovery effectiveness. Runtime
+recovery must emit a typed `RecoveryOutcomeRecorded` event after a recovery
+attempt so eval can score `attempted → succeeded|failed` directly before
+falling back to heuristic windows.
 
 ### 0.5 Objective Evolution
 
@@ -173,7 +190,7 @@ Hard boundary rules:
 
 **Invariant gate:** Before emitting a `ControlEvent`, callers invoke `evaluate_invariant_gate` (`src/invariants.rs`). On violation the caller calls `writer.record_violation(...)` — which appends an `EffectEvent::InvariantViolation` to the tlog without advancing state — and aborts the transition.
 
-**Tlog-driven route recovery:** If the route gate repeatedly blocks executor dispatch for the same missing-target reason, the runtime must treat the repeated `InvariantViolation` records in `AgentStateDir/tlog.ndjson` as recovery evidence. The recovery path must be canonical: clear stale executor lane pending state with `ControlEvent::LanePendingSet`, consume stale executor wake with `ControlEvent::WakeSignalConsumed`, and route control back to planner with `ControlEvent::ScheduledPhaseSet { phase: Some("planner") }` plus `PlannerPendingSet { pending: true }`.
+**Tlog-driven route recovery:** If the route gate repeatedly blocks executor dispatch for the same missing-target reason, the runtime must treat the repeated `InvariantViolation` records in `AgentStateDir/tlog.ndjson` as recovery evidence. The recovery path must be canonical: clear stale executor lane pending state with `ControlEvent::LanePendingSet`, consume stale executor wake with `ControlEvent::WakeSignalConsumed`, route control back to planner with `ControlEvent::ScheduledPhaseSet { phase: Some("planner") }` plus `PlannerPendingSet { pending: true }`, then emit `RecoveryOutcomeRecorded` for eval feedback.
 
 **`RuntimeState` fields** (never serialized, never checkpointed):
 - `submitted_turns: HashMap<(u32, u64), SubmittedExecutorTurn>` — active executor turns keyed by `(tab_id, turn_id)`

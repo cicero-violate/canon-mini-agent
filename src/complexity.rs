@@ -1738,6 +1738,10 @@ fn build_complexity_report(
         json!(eval.vector.improvement_effectiveness),
     );
     eval_report.insert(
+        "recovery_effectiveness".into(),
+        json!(eval.vector.recovery_effectiveness),
+    );
+    eval_report.insert(
         "improvement_attempts".into(),
         json!(eval.tlog_delta_signals.improvement_attempts),
     );
@@ -1772,6 +1776,34 @@ fn build_complexity_report(
     eval_report.insert(
         "measurement_regressions".into(),
         json!(eval.tlog_delta_signals.measurement_regressions),
+    );
+    eval_report.insert(
+        "recovery_attempts".into(),
+        json!(eval.tlog_delta_signals.recovery_attempts),
+    );
+    eval_report.insert(
+        "recovery_successes".into(),
+        json!(eval.tlog_delta_signals.recovery_successes),
+    );
+    eval_report.insert(
+        "recovery_failures".into(),
+        json!(eval.tlog_delta_signals.recovery_failures),
+    );
+    eval_report.insert(
+        "recovery_suppressed".into(),
+        json!(eval.tlog_delta_signals.recovery_suppressed),
+    );
+    eval_report.insert(
+        "recovery_loop_breaks".into(),
+        json!(eval.tlog_delta_signals.recovery_loop_breaks),
+    );
+    eval_report.insert(
+        "recovery_regressions".into(),
+        json!(eval.tlog_delta_signals.recovery_regressions),
+    );
+    eval_report.insert(
+        "recovery_measurement_points".into(),
+        json!(eval.tlog_delta_signals.recovery_measurement_points),
     );
     eval_report.insert(
         "graph_risk_count".into(),

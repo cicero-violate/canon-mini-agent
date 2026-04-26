@@ -407,17 +407,28 @@ pub(super) fn log_timed_out_submitted_turn(
             "command_id": command_id,
         }),
     );
+    let reason = submitted_turn_timeout_reason(ctx, lane_id, tab_id, turn_id, command_id);
     crate::blockers::record_action_failure_with_writer(
         ctx.workspace.as_path(),
         None,
         "executor",
         "executor_completion_timeout",
-        &format!(
-            "executor completion timed out: lane={} tab_id={} turn_id={} command_id={}",
-            ctx.lanes[lane_id].label, tab_id, turn_id, command_id
-        ),
+        &reason,
         None,
     );
+}
+
+pub(super) fn submitted_turn_timeout_reason(
+    ctx: &OrchestratorContext<'_>,
+    lane_id: usize,
+    tab_id: u32,
+    turn_id: u64,
+    command_id: &str,
+) -> String {
+    format!(
+        "executor completion timed out: lane={} tab_id={} turn_id={} command_id={}",
+        ctx.lanes[lane_id].label, tab_id, turn_id, command_id
+    )
 }
 
 pub(super) fn recover_timed_out_submitted_turn(
@@ -431,7 +442,39 @@ pub(super) fn recover_timed_out_submitted_turn(
     let Some(submitted) = rt.submitted_turns.remove(&(tab_id, turn_id)) else {
         return;
     };
+    let prompt_inflight_before = writer
+        .state()
+        .lane_prompt_in_flight
+        .get(&lane_id)
+        .copied()
+        .unwrap_or(false);
+    let lane_in_progress_before = writer
+        .state()
+        .lanes
+        .get(&lane_id)
+        .and_then(|lane| lane.in_progress_by.clone());
+    let lane_pending_before = writer
+        .state()
+        .lanes
+        .get(&lane_id)
+        .map(|lane| lane.pending)
+        .unwrap_or(false);
+    let reason = submitted_turn_timeout_reason(ctx, lane_id, tab_id, turn_id, &submitted.command_id);
     log_timed_out_submitted_turn(ctx, lane_id, tab_id, turn_id, &submitted.command_id);
+    let recovery_decision =
+        submitted_turn_timeout_recovery_decision(ctx.workspace.as_path(), &reason);
+    let retry_recovery = match recovery_decision.as_ref() {
+        Some(decision) => {
+            if let Some(attempt_count) = recovery_budget_exhaustion(ctx.workspace.as_path(), decision) {
+                record_recovery_suppressed(writer, decision, attempt_count);
+                false
+            } else {
+                record_recovery_triggered(writer, decision);
+                true
+            }
+        }
+        None => true,
+    };
     writer.apply(ControlEvent::ExecutorTurnDeregistered { tab_id, turn_id });
     writer.apply(ControlEvent::LanePromptInFlightSet {
         lane_id,
@@ -441,7 +484,53 @@ pub(super) fn recover_timed_out_submitted_turn(
         lane_id,
         actor: None,
     });
-    apply_lane_pending_if_changed(writer, lane_id, true);
+    if retry_recovery {
+        apply_lane_pending_if_changed(writer, lane_id, true);
+    } else {
+        apply_scheduled_phase_if_changed(writer, Some("planner"));
+        if !writer.state().planner_pending {
+            writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+        }
+    }
+    if let Some(decision) = recovery_decision.as_ref().filter(|_| retry_recovery) {
+        let prompt_inflight_after = writer
+            .state()
+            .lane_prompt_in_flight
+            .get(&lane_id)
+            .copied()
+            .unwrap_or(false);
+        let lane_idle_after = writer
+            .state()
+            .lanes
+            .get(&lane_id)
+            .map(|lane| lane.in_progress_by.is_none())
+            .unwrap_or(false);
+        let lane_in_progress_after = writer
+            .state()
+            .lanes
+            .get(&lane_id)
+            .and_then(|lane| lane.in_progress_by.clone());
+        let lane_pending_after = writer
+            .state()
+            .lanes
+            .get(&lane_id)
+            .map(|lane| lane.pending)
+            .unwrap_or(false);
+        let state_delta_count = usize::from(prompt_inflight_before != prompt_inflight_after)
+            + usize::from(lane_in_progress_before != lane_in_progress_after)
+            + usize::from(lane_pending_before != lane_pending_after);
+        let state_delta_seen = state_delta_count > 0;
+        let final_state_repaired = !prompt_inflight_after && lane_idle_after && lane_pending_after;
+        let success = state_delta_seen && final_state_repaired;
+        record_recovery_outcome(
+            writer,
+            decision,
+            success,
+            if success { 0 } else { decision.support_count },
+            state_delta_seen,
+            state_delta_count,
+        );
+    }
 }
 
 pub(super) fn sweep_timed_out_submitted_turns(
@@ -679,6 +768,9 @@ pub(super) fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::pat
     eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
     writer.record_violation("executor", reason);
     let recovery_decision = route_gate_recovery_decision(ws, reason);
+    let recovery_budget_exhaustion = recovery_decision
+        .as_ref()
+        .and_then(|decision| route_gate_recovery_budget_exhaustion(ws, decision));
     let recovery_count = recovery_decision.as_ref().map(|decision| decision.support_count);
     let mut blocker_message = route_gate_blocker_message(reason);
     annotate_route_gate_recovery_payload(&mut blocker_message, recovery_count);
@@ -695,9 +787,16 @@ pub(super) fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::pat
         let _ = crate::logging::append_action_log_record(&record);
     }
     if let Some(decision) = recovery_decision {
-        apply_recovery_decision(writer, &decision);
+        if let Some(attempt_count) = recovery_budget_exhaustion {
+            record_recovery_suppressed(writer, &decision, attempt_count);
+            apply_suppressed_route_gate_terminal_cleanup(writer, &decision);
+        } else {
+            apply_recovery_decision(writer, &decision);
+        }
     }
-    writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+    if !writer.state().planner_pending {
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+    }
 }
 
 const ROUTE_GATE_RECOVERY_TLOG_RECORDS: usize = 128;
@@ -706,8 +805,57 @@ pub(super) fn route_gate_recovery_decision(
     ws: &std::path::Path,
     reason: &str,
 ) -> Option<crate::recovery::RecoveryDecision> {
-    let count = recent_same_route_gate_violation_count(ws, reason);
-    crate::recovery::decision_for_route_gate_block(reason, count)
+    let class = crate::recovery::classify_route_gate_reason(reason)?;
+    let class_key = class.as_key();
+    let count = recent_same_route_gate_violation_count(ws, reason)
+        .max(recent_route_gate_violation_class_count(ws, class_key));
+    crate::recovery::decision_for_failure(
+        class,
+        reason,
+        count,
+        &crate::recovery::RecoveryConfig::default(),
+    )
+}
+
+pub(super) fn submitted_turn_timeout_recovery_decision(
+    ws: &std::path::Path,
+    reason: &str,
+) -> Option<crate::recovery::RecoveryDecision> {
+    let blockers = crate::blockers::load_blockers(ws);
+    let now_ms = crate::logging::now_ms();
+    let support_count = crate::blockers::count_class_recent(
+        &blockers,
+        "executor",
+        &crate::error_class::ErrorClass::LlmTimeout,
+        now_ms,
+        5 * 60 * 1000,
+    )
+    .max(1);
+    crate::recovery::decision_for_failure(
+        crate::error_class::ErrorClass::LlmTimeout,
+        reason,
+        support_count,
+        &crate::recovery::RecoveryConfig::default(),
+    )
+}
+
+pub(super) fn route_gate_recovery_budget_exhaustion(
+    ws: &std::path::Path,
+    decision: &crate::recovery::RecoveryDecision,
+) -> Option<usize> {
+    recovery_budget_exhaustion(ws, decision)
+}
+
+pub(super) fn recovery_budget_exhaustion(
+    ws: &std::path::Path,
+    decision: &crate::recovery::RecoveryDecision,
+) -> Option<usize> {
+    let attempt_count = recent_same_recovery_attempt_count(ws, decision.class.as_key());
+    if decision.max_attempts > 0 && attempt_count >= decision.max_attempts {
+        Some(attempt_count)
+    } else {
+        None
+    }
 }
 
 pub(super) fn recent_same_route_gate_violation_count(
@@ -726,6 +874,53 @@ pub(super) fn recent_same_route_gate_violation_count(
                         reason: recorded_reason,
                     },
             } => proposed_role.as_str() == "executor" && recorded_reason.as_str() == reason,
+            _ => false,
+        })
+        .count()
+}
+
+pub(super) fn recent_route_gate_violation_class_count(
+    ws: &std::path::Path,
+    class: &str,
+) -> usize {
+    let tlog_path = ws.join("agent_state").join("tlog.ndjson");
+    crate::tlog::Tlog::read_recent_records(&tlog_path, ROUTE_GATE_RECOVERY_TLOG_RECORDS)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|record| match &record.event {
+            crate::events::Event::Effect {
+                event:
+                    crate::events::EffectEvent::InvariantViolation {
+                        proposed_role,
+                        reason,
+                    },
+            } => {
+                proposed_role.as_str() == "executor"
+                    && crate::recovery::classify_route_gate_reason(reason)
+                        .map(|detected| detected.as_key() == class)
+                        .unwrap_or(false)
+            }
+            _ => false,
+        })
+        .count()
+}
+
+pub(super) fn recent_same_recovery_attempt_count(
+    ws: &std::path::Path,
+    class: &str,
+) -> usize {
+    let tlog_path = ws.join("agent_state").join("tlog.ndjson");
+    crate::tlog::Tlog::read_recent_records(&tlog_path, ROUTE_GATE_RECOVERY_TLOG_RECORDS)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|record| match &record.event {
+            crate::events::Event::Effect {
+                event:
+                    crate::events::EffectEvent::RecoveryTriggered {
+                        class: recorded_class,
+                        ..
+                    },
+            } => recorded_class.as_str() == class,
             _ => false,
         })
         .count()
@@ -768,18 +963,15 @@ pub(super) fn apply_recovery_decision(
     writer: &mut CanonicalWriter,
     decision: &crate::recovery::RecoveryDecision,
 ) {
-    writer.record_effect(crate::events::EffectEvent::RecoveryTriggered {
-        generated_at_ms: crate::logging::now_ms(),
-        class: decision.class.as_key().to_string(),
-        policy: decision.policy.as_key().to_string(),
-        reason: decision.reason.clone(),
-        support_count: decision.support_count,
-        threshold: decision.threshold,
-        window_ms: decision.window_ms,
-    });
+    record_recovery_triggered(writer, decision);
     if decision.policy != crate::recovery::RecoveryPolicy::ClearExecutorAndWakePlanner {
+        record_recovery_outcome(writer, decision, false, decision.support_count, false, 0);
         return;
     }
+    let pending_lanes_before = claimable_executor_pending_lane_count(writer);
+    let executor_wake_before = writer.state().wake_signals_pending.contains_key("executor");
+    let scheduled_phase_before = writer.state().scheduled_phase.clone();
+    let planner_pending_before = writer.state().planner_pending;
     let lane_ids = writer
         .state()
         .lanes
@@ -805,6 +997,30 @@ pub(super) fn apply_recovery_decision(
         });
     }
     apply_scheduled_phase_if_changed(writer, Some("planner"));
+    if !writer.state().planner_pending {
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+    }
+    let pending_lanes_after = claimable_executor_pending_lane_count(writer);
+    let executor_wake_after = writer.state().wake_signals_pending.contains_key("executor");
+    let routed_to_planner = writer.state().scheduled_phase.as_deref() == Some("planner");
+    let planner_pending = writer.state().planner_pending;
+    let state_delta_count = usize::from(pending_lanes_after < pending_lanes_before)
+        + usize::from(executor_wake_before && !executor_wake_after)
+        + usize::from(scheduled_phase_before.as_deref() != Some("planner") && routed_to_planner)
+        + usize::from(!planner_pending_before && planner_pending);
+    let state_delta_seen = state_delta_count > 0;
+    let final_state_repaired =
+        pending_lanes_after == 0 && !executor_wake_after && routed_to_planner && planner_pending;
+    let success = state_delta_seen && final_state_repaired;
+    let failure_count_after = if success { 0 } else { decision.support_count };
+    record_recovery_outcome(
+        writer,
+        decision,
+        success,
+        failure_count_after,
+        state_delta_seen,
+        state_delta_count,
+    );
     eprintln!(
         "[route_recovery] class={} policy={} repeated={} cleared_lanes={:?} rerouted=planner",
         decision.class.as_key(),
@@ -812,4 +1028,144 @@ pub(super) fn apply_recovery_decision(
         decision.support_count,
         lane_ids
     );
+}
+
+
+fn apply_suppressed_route_gate_terminal_cleanup(
+    writer: &mut CanonicalWriter,
+    decision: &crate::recovery::RecoveryDecision,
+) {
+    if decision.policy != crate::recovery::RecoveryPolicy::ClearExecutorAndWakePlanner {
+        return;
+    }
+
+    let pending_lanes_before = claimable_executor_pending_lane_count(writer);
+    let executor_wake_before = writer.state().wake_signals_pending.contains_key("executor");
+    let scheduled_phase_before = writer.state().scheduled_phase.clone();
+    let planner_pending_before = writer.state().planner_pending;
+    let lane_ids = writer
+        .state()
+        .lanes
+        .iter()
+        .filter_map(|(lane_id, lane)| {
+            if lane.pending && lane.in_progress_by.is_none() {
+                Some(*lane_id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    for lane_id in &lane_ids {
+        writer.apply(ControlEvent::LanePendingSet {
+            lane_id: *lane_id,
+            pending: false,
+        });
+    }
+    if let Some((_, signature)) = writer.state().wake_signals_pending.get("executor").cloned() {
+        writer.apply(ControlEvent::WakeSignalConsumed {
+            role: "executor".to_string(),
+            signature,
+        });
+    }
+    apply_scheduled_phase_if_changed(writer, Some("planner"));
+    if !writer.state().planner_pending {
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+    }
+
+    let pending_lanes_after = claimable_executor_pending_lane_count(writer);
+    let executor_wake_after = writer.state().wake_signals_pending.contains_key("executor");
+    let routed_to_planner = writer.state().scheduled_phase.as_deref() == Some("planner");
+    let planner_pending = writer.state().planner_pending;
+    let state_delta_count = usize::from(pending_lanes_after < pending_lanes_before)
+        + usize::from(executor_wake_before && !executor_wake_after)
+        + usize::from(scheduled_phase_before.as_deref() != Some("planner") && routed_to_planner)
+        + usize::from(!planner_pending_before && planner_pending);
+    let state_delta_seen = state_delta_count > 0;
+    let final_state_repaired =
+        pending_lanes_after == 0 && !executor_wake_after && routed_to_planner && planner_pending;
+    let success = state_delta_seen && final_state_repaired;
+    record_recovery_outcome(
+        writer,
+        decision,
+        success,
+        if success { 0 } else { decision.support_count },
+        state_delta_seen,
+        state_delta_count,
+    );
+    eprintln!(
+        "[route_recovery] suppressed_terminal_cleanup class={} policy={} attempts_exhausted cleared_lanes={:?} rerouted=planner success={}",
+        decision.class.as_key(),
+        decision.policy.as_key(),
+        lane_ids,
+        success
+    );
+}
+
+fn record_recovery_triggered(
+    writer: &mut CanonicalWriter,
+    decision: &crate::recovery::RecoveryDecision,
+) {
+    writer.record_effect(crate::events::EffectEvent::RecoveryTriggered {
+        generated_at_ms: crate::logging::now_ms(),
+        class: decision.class.as_key().to_string(),
+        policy: decision.policy.as_key().to_string(),
+        reason: decision.reason.clone(),
+        support_count: decision.support_count,
+        threshold: decision.threshold,
+        window_ms: decision.window_ms,
+    });
+}
+
+fn record_recovery_suppressed(
+    writer: &mut CanonicalWriter,
+    decision: &crate::recovery::RecoveryDecision,
+    attempt_count: usize,
+) {
+    writer.record_effect(crate::events::EffectEvent::RecoverySuppressed {
+        generated_at_ms: crate::logging::now_ms(),
+        class: decision.class.as_key().to_string(),
+        policy: decision.policy.as_key().to_string(),
+        reason: decision.reason.clone(),
+        suppression_reason: format!(
+            "retry_budget_exhausted attempt_count={} max_attempts={}",
+            attempt_count, decision.max_attempts
+        ),
+    });
+    eprintln!(
+        "[route_recovery] suppressed class={} policy={} attempts={} max_attempts={}",
+        decision.class.as_key(),
+        decision.policy.as_key(),
+        attempt_count,
+        decision.max_attempts
+    );
+}
+
+fn claimable_executor_pending_lane_count(writer: &CanonicalWriter) -> usize {
+    writer
+        .state()
+        .lanes
+        .values()
+        .filter(|lane| lane.pending && lane.in_progress_by.is_none())
+        .count()
+}
+
+fn record_recovery_outcome(
+    writer: &mut CanonicalWriter,
+    decision: &crate::recovery::RecoveryDecision,
+    success: bool,
+    failure_count_after: usize,
+    progress_event_seen: bool,
+    eval_window_events: usize,
+) {
+    writer.record_effect(crate::events::EffectEvent::RecoveryOutcomeRecorded {
+        generated_at_ms: crate::logging::now_ms(),
+        class: decision.class.as_key().to_string(),
+        policy: decision.policy.as_key().to_string(),
+        success,
+        failure_count_before: decision.support_count,
+        failure_count_after,
+        progress_event_seen,
+        eval_window_events,
+    });
 }

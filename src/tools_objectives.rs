@@ -133,13 +133,13 @@ fn sort_objectives_for_view(file: &mut crate::objectives::ObjectivesFile, includ
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: OBJECTIVES.json
 /// Inputs: &str
 /// Outputs: std::result::Result<objectives::ObjectivesFile, anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: parses and validates objective IDs without mutation
+/// Forbidden: filesystem writes, state mutation
+/// Invariants: objective IDs must be unique after strict parse
+/// Failure: returns parse errors or duplicate objective ID validation errors
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_objectives_file_strict(raw: &str) -> Result<crate::objectives::ObjectivesFile> {
     let file: crate::objectives::ObjectivesFile =

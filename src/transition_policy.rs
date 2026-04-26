@@ -35,19 +35,11 @@ fn lane_in_progress(state: &SystemState, lane_id: usize) -> bool {
 }
 
 fn lane_submit_in_flight(state: &SystemState, lane_id: usize) -> bool {
-    state
-        .lane_submit_in_flight
-        .get(&lane_id)
-        .copied()
-        .unwrap_or(false)
+    state.lane_submit_active(lane_id)
 }
 
 fn lane_prompt_in_flight(state: &SystemState, lane_id: usize) -> bool {
-    state
-        .lane_prompt_in_flight
-        .get(&lane_id)
-        .copied()
-        .unwrap_or(false)
+    state.lane_in_flight(lane_id)
 }
 
 fn lane_required_for_phase(phase: &str, lane: Option<usize>) -> Result<usize, String> {

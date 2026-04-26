@@ -155,22 +155,42 @@ pub(super) fn log_executor_completion_observation_error(
     error: &impl std::fmt::Display,
 ) {
     eprintln!("[orchestrate] executor_completion_log_error: {error}");
+    let message = executor_completion_observation_error_message(lane_name, turn_id, tab_id, error);
+    let payload = executor_completion_observation_error_payload(submitted, lane_name, turn_id, tab_id);
     log_error_event(
         "orchestrate",
         "executor_completion_log",
         Some(1),
-        &format!(
-            "executor completion log append failed for lane={} turn_id={} tab_id={}: {error}",
-            lane_name, turn_id, tab_id
-        ),
-        Some(json!({
-            "lane_name": lane_name,
-            "turn_id": turn_id,
-            "tab_id": tab_id,
-            "endpoint_id": submitted.endpoint_id,
-            "command_id": submitted.command_id,
-        })),
+        &message,
+        Some(payload),
     );
+}
+
+fn executor_completion_observation_error_message(
+    lane_name: &str,
+    turn_id: u64,
+    tab_id: u32,
+    error: &impl std::fmt::Display,
+) -> String {
+    format!(
+        "executor completion log append failed for lane={} turn_id={} tab_id={}: {error}",
+        lane_name, turn_id, tab_id
+    )
+}
+
+fn executor_completion_observation_error_payload(
+    submitted: &SubmittedExecutorTurn,
+    lane_name: &str,
+    turn_id: u64,
+    tab_id: u32,
+) -> Value {
+    json!({
+        "lane_name": lane_name,
+        "turn_id": turn_id,
+        "tab_id": tab_id,
+        "endpoint_id": submitted.endpoint_id,
+        "command_id": submitted.command_id,
+    })
 }
 
 pub(super) fn log_startup_stage_error(stage_label: &str, err: &impl std::fmt::Display) {
@@ -488,16 +508,24 @@ pub(super) fn synthesize_executor_blocker_handoff(action: &Value, exec_result: &
 }
 
 pub(super) fn executor_blocker_handoff_message(payload: Value) -> Value {
+    let (observation, rationale) = executor_blocker_handoff_explanation();
     json!({
         "action": "message",
         "from": "executor",
         "to": "planner",
         "type": "blocker",
         "status": "blocked",
-        "observation": "Executor produced a non-recoverable result class; planner repair is required before the next execute phase.",
-        "rationale": "Control transitions must be derived from canonical result classes, and planning-class failures are routed to planner.",
+        "observation": observation,
+        "rationale": rationale,
         "payload": payload
     })
+}
+
+fn executor_blocker_handoff_explanation() -> (&'static str, &'static str) {
+    (
+        "Executor produced a non-recoverable result class; planner repair is required before the next execute phase.",
+        "Control transitions must be derived from canonical result classes, and planning-class failures are routed to planner.",
+    )
 }
 
 pub(super) fn synthesize_executor_blocker_payload(action_kind: &str, exec_result: &str) -> Value {
@@ -625,16 +653,8 @@ pub(super) fn executor_activity_snapshot(
     continuation_joinset: &tokio::task::JoinSet<ContinuationJoinOutput>,
 ) -> ExecutorActivitySnapshot {
     let lane_flags = executor_lane_activity_flags(state);
-    let runtime_busy = !rt.submitted_turns.is_empty()
-        || !rt.executor_submit_inflight.is_empty()
-        || !submit_joinset.is_empty()
-        || !continuation_joinset.is_empty();
-    let canonical_work = state.scheduled_phase.as_deref() == Some("executor")
-        || state.wake_signals_pending.contains_key("executor")
-        || lane_flags.pending
-        || lane_flags.in_progress
-        || lane_flags.submit_flagged
-        || lane_flags.prompt_flagged;
+    let runtime_busy = executor_runtime_busy(rt, submit_joinset, continuation_joinset);
+    let canonical_work = executor_has_canonical_work(state, &lane_flags);
     let flagged_busy = state.phase == "executor"
         && (lane_flags.submit_flagged || lane_flags.prompt_flagged || lane_flags.in_progress);
     let inflight = !rt.submitted_turns.is_empty()
@@ -653,6 +673,26 @@ pub(super) fn executor_activity_snapshot(
         lane_pending: lane_flags.pending,
         in_progress,
     }
+}
+
+fn executor_runtime_busy(
+    rt: &RuntimeState,
+    submit_joinset: &tokio::task::JoinSet<ExecutorSubmitJoinOutput>,
+    continuation_joinset: &tokio::task::JoinSet<ContinuationJoinOutput>,
+) -> bool {
+    !rt.submitted_turns.is_empty()
+        || !rt.executor_submit_inflight.is_empty()
+        || !submit_joinset.is_empty()
+        || !continuation_joinset.is_empty()
+}
+
+fn executor_has_canonical_work(state: &SystemState, lane_flags: &ExecutorLaneActivityFlags) -> bool {
+    state.scheduled_phase.as_deref() == Some("executor")
+        || state.wake_signals_pending.contains_key("executor")
+        || lane_flags.pending
+        || lane_flags.in_progress
+        || lane_flags.submit_flagged
+        || lane_flags.prompt_flagged
 }
 
 struct ExecutorLaneActivityFlags {

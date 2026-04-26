@@ -898,38 +898,7 @@ pub(super) fn summarize_inbound_message(inbound: &str, role: &str) -> String {
         .get("predicted_next_actions")
         .and_then(Value::as_array)
     {
-        let predicted_intent = |name: &str| -> String {
-            next_actions
-                .iter()
-                .find(|action| action.get("action").and_then(Value::as_str) == Some(name))
-                .and_then(|action| action.get("intent").and_then(Value::as_str))
-                .map(str::trim)
-                .filter(|text| !text.is_empty())
-                .map(|text| truncate(text, 120).to_string())
-                .unwrap_or_else(|| "N/A".to_string())
-        };
-        let mut rendered = crate::prompts::role_default_schema_actions_for_role(role)
-            .iter()
-            .map(|name| format!("- {}: {}", name, predicted_intent(name)))
-            .collect::<Vec<_>>();
-
-        let mut extra = next_actions
-            .iter()
-            .filter_map(|action| action.get("action").and_then(Value::as_str))
-            .filter(|name| {
-                !crate::prompts::role_default_schema_actions_for_role(role)
-                    .iter()
-                    .any(|allowed| allowed == name)
-            })
-            .map(|name| name.to_string())
-            .collect::<Vec<_>>();
-        extra.sort();
-        extra.dedup();
-        rendered.extend(
-            extra
-                .iter()
-                .map(|name| format!("- {}: {}", name, predicted_intent(name))),
-        );
+        let rendered = render_predicted_next_actions(next_actions, role);
         if !rendered.is_empty() {
             out.push_str("predicted_next_actions:\n");
             out.push_str(&rendered.join("\n"));
@@ -937,6 +906,38 @@ pub(super) fn summarize_inbound_message(inbound: &str, role: &str) -> String {
         }
     }
     out.trim().to_string()
+}
+
+fn render_predicted_next_actions(next_actions: &[Value], role: &str) -> Vec<String> {
+    let predicted_intent = |name: &str| -> String {
+        next_actions
+            .iter()
+            .find(|action| action.get("action").and_then(Value::as_str) == Some(name))
+            .and_then(|action| action.get("intent").and_then(Value::as_str))
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(|text| truncate(text, 120).to_string())
+            .unwrap_or_else(|| "N/A".to_string())
+    };
+    let allowed = crate::prompts::role_default_schema_actions_for_role(role);
+    let mut rendered = allowed
+        .iter()
+        .map(|name| format!("- {}: {}", name, predicted_intent(name)))
+        .collect::<Vec<_>>();
+    let mut extra = next_actions
+        .iter()
+        .filter_map(|action| action.get("action").and_then(Value::as_str))
+        .filter(|name| !allowed.iter().any(|allowed| allowed == name))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    extra.sort();
+    extra.dedup();
+    rendered.extend(
+        extra
+            .iter()
+            .map(|name| format!("- {}: {}", name, predicted_intent(name))),
+    );
+    rendered
 }
 
 /// Intent: event_append

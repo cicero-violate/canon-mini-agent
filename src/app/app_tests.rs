@@ -8,9 +8,10 @@ mod tests {
         executor_step_limit_feedback,
         has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
         is_chromium_transport_error, lane_has_stale_executor_claim, plan_has_incomplete_tasks,
-        route_gate_blocker_message, route_gate_recovery_decision,
+        recent_route_gate_violation_class_count, recent_same_recovery_attempt_count, route_gate_blocker_message,
+        route_gate_recovery_budget_exhaustion, route_gate_recovery_decision,
         planner_completion_allows_executor_dispatch, semantic_action_fingerprint,
-        should_reject_solo_self_complete,
+        should_reject_solo_self_complete, submitted_turn_timeout_recovery_decision,
         RecordedMessageKind,
         take_external_user_message_without_writer, take_inbound_message_without_writer,
         verifier_confirmed_with_plan_text, ActionProvenance,
@@ -251,14 +252,24 @@ mod tests {
             .find("apply_scheduled_phase_if_changed(writer, Some(\"planner\"));")
             .map(|offset| consume_wake + offset)
             .expect("recovery must route control back to planner");
+        let planner_pending = source[reroute_planner..]
+            .find("ControlEvent::PlannerPendingSet { pending: true }")
+            .map(|offset| reroute_planner + offset)
+            .expect("recovery must mark planner pending before outcome");
+        let outcome = source[planner_pending..]
+            .find("EffectEvent::RecoveryOutcomeRecorded")
+            .map(|offset| planner_pending + offset)
+            .expect("recovery must record a typed outcome for eval");
 
         assert!(
             record_violation < recovery_count
                 && recovery_count < recovery_effect
                 && recovery_effect < clear_pending
                 && clear_pending < consume_wake
-                && consume_wake < reroute_planner,
-            "missing-target recovery must be tlog evidence -> recovery effect -> canonical executor cleanup -> planner reroute"
+                && consume_wake < reroute_planner
+                && reroute_planner < planner_pending
+                && planner_pending < outcome,
+            "missing-target recovery must be tlog evidence -> recovery effect -> canonical executor cleanup -> planner reroute -> planner pending -> eval outcome"
         );
     }
 
@@ -290,6 +301,135 @@ mod tests {
             route_gate_recovery_decision(&ws, reason).map(|decision| decision.support_count),
             Some(2)
         );
+        fs::remove_dir_all(ws).unwrap();
+    }
+
+    #[test]
+    fn repeated_missing_target_recovery_stops_at_retry_budget() {
+        let _guard = global_state_lock().lock().unwrap();
+        let ws = temp_workspace("missing-target-recovery-budget");
+        fs::create_dir_all(ws.join("agent_state")).unwrap();
+        let reason = "invariant gate blocked role `executor`: Action targeted a path that does not exist — plan is referencing a target that has not been created yet [id=INV-test]";
+        let tlog_path = ws.join("agent_state/tlog.ndjson");
+        let violation = |seq: usize| {
+            serde_json::json!({
+                "seq": seq,
+                "ts_ms": seq,
+                "event": {
+                    "class": "effect",
+                    "event": {
+                        "kind": "invariant_violation",
+                        "proposed_role": "executor",
+                        "reason": reason
+                    }
+                }
+            })
+            .to_string()
+        };
+        let recovery = |seq: usize| {
+            serde_json::json!({
+                "seq": seq,
+                "ts_ms": seq,
+                "event": {
+                    "class": "effect",
+                    "event": {
+                        "kind": "recovery_triggered",
+                        "generated_at_ms": seq,
+                        "class": "missing_target",
+                        "policy": "clear_executor_and_wake_planner",
+                        "reason": reason,
+                        "support_count": 2,
+                        "threshold": 2,
+                        "window_ms": 300000
+                    }
+                }
+            })
+            .to_string()
+        };
+        fs::write(
+            &tlog_path,
+            format!(
+                "{}\n{}\n{}\n{}\n",
+                violation(1),
+                violation(2),
+                recovery(3),
+                recovery(4)
+            ),
+        )
+        .unwrap();
+
+        let decision = route_gate_recovery_decision(&ws, reason).expect("recovery decision");
+        assert_eq!(decision.max_attempts, 2);
+        assert_eq!(recent_same_recovery_attempt_count(&ws, "missing_target"), 2);
+        assert_eq!(
+            route_gate_recovery_budget_exhaustion(&ws, &decision),
+            Some(2)
+        );
+        fs::remove_dir_all(ws).unwrap();
+    }
+
+    #[test]
+    fn route_gate_recovery_uses_error_class_count_across_reason_variants() {
+        let _guard = global_state_lock().lock().unwrap();
+        let ws = temp_workspace("route-gate-class-count");
+        fs::create_dir_all(ws.join("agent_state")).unwrap();
+        let reason_a = "invariant gate blocked role `executor`: Role `executor` repeatedly encounters `invalid_schema` [id=INV-a]";
+        let reason_b = "invariant gate blocked role `executor`: invalid schema action must be repaired before dispatch [id=INV-b]";
+        let line = |seq: usize, reason: &str| {
+            serde_json::json!({
+                "seq": seq,
+                "ts_ms": seq,
+                "event": {
+                    "class": "effect",
+                    "event": {
+                        "kind": "invariant_violation",
+                        "proposed_role": "executor",
+                        "reason": reason
+                    }
+                }
+            })
+            .to_string()
+        };
+        fs::write(
+            ws.join("agent_state/tlog.ndjson"),
+            format!("{}\n{}\n{}\n", line(1, reason_a), line(2, reason_b), line(3, reason_b)),
+        )
+        .unwrap();
+
+        assert_eq!(recent_route_gate_violation_class_count(&ws, "invalid_schema"), 3);
+        let decision = route_gate_recovery_decision(&ws, reason_b).expect("recovery decision");
+        assert_eq!(decision.class, crate::error_class::ErrorClass::InvalidSchema);
+        assert_eq!(decision.support_count, 3);
+        assert_eq!(
+            decision.policy,
+            crate::recovery::RecoveryPolicy::EscalateDiagnostics
+        );
+        fs::remove_dir_all(ws).unwrap();
+    }
+
+    #[test]
+    fn submitted_turn_timeout_recovery_is_immediately_measurable() {
+        let _guard = global_state_lock().lock().unwrap();
+        let ws = temp_workspace("submitted-turn-timeout-recovery");
+        fs::create_dir_all(ws.join("agent_state")).unwrap();
+        let reason = "executor completion timed out: lane=executor_pool tab_id=7 turn_id=11 command_id=executor:executor_pool:0001:1";
+        crate::blockers::record_action_failure_with_writer(
+            &ws,
+            None,
+            "executor",
+            "executor_completion_timeout",
+            reason,
+            None,
+        );
+
+        let decision =
+            submitted_turn_timeout_recovery_decision(&ws, reason).expect("recovery decision");
+        assert_eq!(decision.class, crate::error_class::ErrorClass::LlmTimeout);
+        assert_eq!(
+            decision.policy,
+            crate::recovery::RecoveryPolicy::RetireTransportAndRetry
+        );
+        assert_eq!(decision.support_count, 1);
         fs::remove_dir_all(ws).unwrap();
     }
 

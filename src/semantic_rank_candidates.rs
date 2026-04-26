@@ -469,25 +469,7 @@ pub fn run_with_options(
         let s = score(intent, prov, effects, pairs.len(), mir_bl, &mut reasoning);
         let confidence = (s * 100.0).round() / 100.0;
 
-        let pair_summaries: Vec<PairSummary> = pairs
-            .iter()
-            .map(|p| {
-                use std::collections::HashSet;
-                let a: HashSet<usize> = p.path_a.blocks.iter().copied().collect();
-                let b: HashSet<usize> = p.path_b.blocks.iter().copied().collect();
-                let mut only_a: Vec<usize> = a.difference(&b).copied().collect();
-                let mut only_b: Vec<usize> = b.difference(&a).copied().collect();
-                only_a.sort_unstable();
-                only_b.sort_unstable();
-                PairSummary {
-                    shared_signature: p.shared_signature,
-                    blocks_a: p.path_a.blocks.clone(),
-                    blocks_b: p.path_b.blocks.clone(),
-                    only_in_a: only_a,
-                    only_in_b: only_b,
-                }
-            })
-            .collect();
+        let pair_summaries = summarize_redundant_path_pairs(pairs);
 
         candidates.push(Candidate {
             rank: 0,
@@ -574,6 +556,27 @@ pub fn run_with_options(
         unmatched_owners: unmatched,
         out_path,
     })
+}
+
+fn summarize_redundant_path_pairs(pairs: &[&RedundantPathPair]) -> Vec<PairSummary> {
+    pairs
+        .iter()
+        .map(|p| {
+            let a: HashSet<usize> = p.path_a.blocks.iter().copied().collect();
+            let b: HashSet<usize> = p.path_b.blocks.iter().copied().collect();
+            let mut only_a: Vec<usize> = a.difference(&b).copied().collect();
+            let mut only_b: Vec<usize> = b.difference(&a).copied().collect();
+            only_a.sort_unstable();
+            only_b.sort_unstable();
+            PairSummary {
+                shared_signature: p.shared_signature,
+                blocks_a: p.path_a.blocks.clone(),
+                blocks_b: p.path_b.blocks.clone(),
+                only_in_a: only_a,
+                only_in_b: only_b,
+            }
+        })
+        .collect()
 }
 
 fn build_candidates_output(

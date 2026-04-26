@@ -532,13 +532,13 @@ fn persist_plan_action_update(
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: PLAN.json + tlog.ndjson
 /// Inputs: &std::path::Path, &serde_json::Value, &str, &std::path::Path, &serde_json::Value, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: writes canonical PLAN projection and appends plan_update control log
+/// Forbidden: direct non-canonical PLAN mutation
+/// Invariants: projection write precedes control log append; ready-task side effect is derived from the accepted plan op
+/// Failure: returns write/serialization errors; logging side effect is best-effort
 /// Provenance: rustc:facts + rustc:docstring
 fn persist_plan_bundle_projection(
     workspace: &Path,

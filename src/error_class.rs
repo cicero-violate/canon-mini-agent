@@ -72,6 +72,30 @@ pub enum ErrorClass {
 }
 
 impl ErrorClass {
+    pub const ALL: [ErrorClass; 21] = [
+        ErrorClass::SecondMutationPath,
+        ErrorClass::RuntimeControlBypass,
+        ErrorClass::UncanonicalizedRecoveryPath,
+        ErrorClass::CheckpointRuntimeDivergence,
+        ErrorClass::EffectfulStateAdvanceWithoutControlEvent,
+        ErrorClass::AmbiguousControlEvent,
+        ErrorClass::MissingTarget,
+        ErrorClass::InvalidSchema,
+        ErrorClass::StepLimitExceeded,
+        ErrorClass::PlanPreflightFailed,
+        ErrorClass::CompileError,
+        ErrorClass::PermissionDenied,
+        ErrorClass::ReadFileStall,
+        ErrorClass::InvalidRoute,
+        ErrorClass::BlockerEscalated,
+        ErrorClass::UnauthorizedPlanOp,
+        ErrorClass::VerificationFailed,
+        ErrorClass::LlmTimeout,
+        ErrorClass::LivelockDetected,
+        ErrorClass::ReactionOnly,
+        ErrorClass::Unknown,
+    ];
+
     fn metadata(&self) -> (&'static str, &'static str) {
         match self {
             ErrorClass::SecondMutationPath => (

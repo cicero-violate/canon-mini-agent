@@ -66,6 +66,7 @@ pub struct SemanticPromptArtifacts {
     pub issues_summary: String,
     pub violations_summary: String,
     pub diagnostics_summary: String,
+    pub recovery_dashboard: String,
     /// Eval score header prepended to the issues section.
     /// Shows overall score, weakest dimension, and a direct improvement directive.
     pub eval_header: String,
@@ -476,6 +477,10 @@ fn build_eval_header(workspace: &Path) -> String {
             get_f64_or("improvement_effectiveness", 1.0),
         ),
         (
+            "recovery_effectiveness",
+            get_f64_or("recovery_effectiveness", 1.0),
+        ),
+        (
             "structural_invariant_coverage",
             get_f64("structural_invariant_coverage"),
         ),
@@ -487,25 +492,7 @@ fn build_eval_header(workspace: &Path) -> String {
         .copied()
         .unwrap_or(("unknown", 0.0));
 
-    let directive = match weakest_name {
-        "objective_progress" => "close completed objectives and create plan tasks for active ones",
-        "task_velocity" => "complete or close stale PLAN.json tasks",
-        "issue_health" => "close or fix the repeated open issues below",
-        "safety" => "resolve violations listed in the violations view",
-        "improvement_measurement" => {
-            "after every apply_patch improvement, run eval so tlog records the delta evidence"
-        }
-        "improvement_validation" => {
-            "after every apply_patch improvement, run cargo check/test/build and record the result in tlog"
-        }
-        "improvement_effectiveness" => {
-            "reduce or revert patches whose measured eval delta regresses after validation"
-        }
-        "structural_invariant_coverage" => {
-            "implement source-code synthesis for missing graph-risk invariant candidates; do not patch enforced_invariants.json directly"
-        }
-        _ => "address the highest-scored issues below",
-    };
+    let directive = eval_score_directive(weakest_name);
 
     let objectives = objectives_ratio
         .map(|(done, total)| format!("{done}/{total}"))
@@ -531,7 +518,9 @@ lag_action={lag_kind}({lag_ms}ms)  payload={payload_kind}({payload_bytes}B)  \
 plan_payload={plan_payload_bytes}B  measured_improvements={measured}/{attempts}  \
 unmeasured={unmeasured}  validated_improvements={validated}/{attempts}  \
 unvalidated={unvalidated}  non_regressed_improvements={non_regressed}/{measured}  \
-regressed={regressed}\n\
+regressed={regressed}  recovery_effectiveness={recovery_effectiveness:.3}  \
+recovery={recovery_successes}/{recovery_attempts}  recovery_failed={recovery_failures}  \
+recovery_suppressed={recovery_suppressed}\n\
 → To raise score: {directive}\n",
         lag_kind = get_str("tlog_dominant_actionable_lag_kind"),
         lag_ms = get_u64("tlog_dominant_actionable_lag_kind_ms"),
@@ -545,7 +534,111 @@ regressed={regressed}\n\
         unvalidated = get_u64("unvalidated_improvement_attempts"),
         non_regressed = get_u64("non_regressed_improvement_attempts"),
         regressed = get_u64("regressed_improvement_attempts"),
+        recovery_effectiveness = get_f64_or("recovery_effectiveness", 1.0),
+        recovery_successes = get_u64("recovery_successes"),
+        recovery_attempts = get_u64("recovery_attempts"),
+        recovery_failures = get_u64("recovery_failures"),
+        recovery_suppressed = get_u64("recovery_suppressed"),
     )
+}
+
+fn eval_score_directive(weakest_name: &str) -> &'static str {
+    match weakest_name {
+        "objective_progress" => "close completed objectives and create plan tasks for active ones",
+        "task_velocity" => "complete or close stale PLAN.json tasks",
+        "issue_health" => "close or fix the repeated open issues below",
+        "safety" => "resolve violations listed in the violations view",
+        "improvement_measurement" => {
+            "after every apply_patch improvement, run eval so tlog records the delta evidence"
+        }
+        "improvement_validation" => {
+            "after every apply_patch improvement, run cargo check/test/build and record the result in tlog"
+        }
+        "improvement_effectiveness" => {
+            "reduce or revert patches whose measured eval delta regresses after validation"
+        }
+        "recovery_effectiveness" => {
+            "inspect failed or suppressed recovery classes before adding another retry path"
+        }
+        "structural_invariant_coverage" => {
+            "implement source-code synthesis for missing graph-risk invariant candidates; do not patch enforced_invariants.json directly"
+        }
+        _ => "address the highest-scored issues below",
+    }
+}
+
+fn build_recovery_dashboard(workspace: &Path) -> String {
+    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let records = match crate::tlog::Tlog::read_recent_records(&tlog_path, 2_000) {
+        Ok(records) => records,
+        Err(err) => {
+            return format!(
+                "RECOVERY unavailable: failed to read {}: {err}",
+                tlog_path.display()
+            )
+        }
+    };
+    let signals = crate::evaluation::evaluate_tlog_delta_invariants(&records);
+    let classes = recovery_class_summary(&records);
+    let directive = recovery_dashboard_directive(&signals);
+    format!(
+        "RECOVERY score={score:.3} attempts={attempts} successes={successes} \
+failures={failures} suppressed={suppressed} loop_breaks={loop_breaks} \
+regressions={regressions} measurement_points={measurement_points} classes={classes}\n\
+→ Recovery focus: {directive}",
+        score = signals.recovery_effectiveness_score,
+        attempts = signals.recovery_attempts,
+        successes = signals.recovery_successes,
+        failures = signals.recovery_failures,
+        suppressed = signals.recovery_suppressed,
+        loop_breaks = signals.recovery_loop_breaks,
+        regressions = signals.recovery_regressions,
+        measurement_points = signals.recovery_measurement_points,
+        classes = classes,
+        directive = directive,
+    )
+}
+
+fn recovery_dashboard_directive(signals: &crate::evaluation::TlogDeltaSignals) -> &'static str {
+    if signals.recovery_suppressed > 0 {
+        "retry budget exhausted; escalate or repair the root cause before another recovery attempt"
+    } else if signals.recovery_failures > 0 || signals.recovery_regressions > 0 {
+        "failed recovery observed; inspect the class and wire a narrower outcome check"
+    } else if signals.recovery_attempts == 0 {
+        "no recent recovery attempts; repeated blockers must enter RecoveryTriggered/Outcome/Suppressed"
+    } else {
+        "recovery attempts are currently succeeding; keep future blocker repairs on this canonical path"
+    }
+}
+
+fn recovery_class_summary(records: &[crate::tlog::TlogRecord]) -> String {
+    let mut counts = std::collections::BTreeMap::<String, usize>::new();
+    for record in records.iter().rev() {
+        let class = match &record.event {
+            crate::events::Event::Effect {
+                event: crate::events::EffectEvent::RecoveryTriggered { class, .. },
+            }
+            | crate::events::Event::Effect {
+                event: crate::events::EffectEvent::RecoverySuppressed { class, .. },
+            }
+            | crate::events::Event::Effect {
+                event: crate::events::EffectEvent::RecoveryOutcomeRecorded { class, .. },
+            } => class,
+            _ => continue,
+        };
+        *counts.entry(class.clone()).or_insert(0) += 1;
+    }
+    if counts.is_empty() {
+        return "none".to_string();
+    }
+    let mut ranked = counts.into_iter().collect::<Vec<_>>();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    ranked
+        .into_iter()
+        .take(3)
+        .map(|(class, count)| format!("{class}:{count}"))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn ratio(done: usize, total: usize) -> f64 {
@@ -858,6 +951,7 @@ pub fn derive_semantic_prompt_artifacts(
     SemanticPromptArtifacts {
         issues_summary: summarize_ranked_open_issues_for_prompt(&open_issues, issue_limit),
         eval_header: build_eval_header(workspace),
+        recovery_dashboard: build_recovery_dashboard(workspace),
         violations_summary: summarize_violations_report_for_prompt(
             violations_report.as_ref(),
             match violations_status {
@@ -882,6 +976,13 @@ pub fn derive_semantic_control_prompt_state(
 
     if !runtime_state.trim().is_empty() {
         sections.push(format!("Runtime semantic state:\n{}", runtime_state.trim()));
+    }
+
+    if !artifacts.recovery_dashboard.trim().is_empty() {
+        sections.push(format!(
+            "Recovery dashboard:\n{}",
+            artifacts.recovery_dashboard.trim()
+        ));
     }
 
     if !artifacts.issues_summary.trim().is_empty()
@@ -2259,8 +2360,9 @@ fn render_executor_diff(diff_text: &str, max_lines: usize) -> String {
 #[cfg(test)]
 mod diagnostics_filter_tests {
     use super::{
-        build_eval_header, derive_semantic_prompt_artifacts, filter_active_diagnostics_json,
-        filter_active_violations_json, filter_pending_plan_json, load_diagnostics_projection_text,
+        build_eval_header, build_recovery_dashboard, derive_semantic_control_prompt_state,
+        derive_semantic_prompt_artifacts, filter_active_diagnostics_json, filter_active_violations_json,
+        filter_pending_plan_json, load_diagnostics_projection_text,
         render_diagnostics_report_from_issues, sanitize_diagnostics_for_planner,
     };
     use crate::constants::{MASTER_PLAN_FILE, OBJECTIVES_FILE, VIOLATIONS_FILE};
@@ -2550,6 +2652,40 @@ mod diagnostics_filter_tests {
         assert!(header.contains("tasks=1/4"));
         assert!(!header.contains("objectives=0/0"));
         assert!(!header.contains("tasks=0/0"));
+    }
+
+    #[test]
+    fn recovery_dashboard_injects_recent_tlog_recovery_metrics() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "canon-mini-agent-recovery-dashboard-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        fs::create_dir_all(workspace.join("agent_state")).unwrap();
+        fs::write(
+            workspace.join("agent_state/tlog.ndjson"),
+            r#"{"seq":1,"ts_ms":1,"event":{"class":"effect","event":{"kind":"recovery_triggered","generated_at_ms":1,"class":"llm_timeout","policy":"retire_transport_and_retry","reason":"submitted turn timed out","support_count":2,"threshold":2,"window_ms":60000}}}
+{"seq":2,"ts_ms":2,"event":{"class":"effect","event":{"kind":"recovery_outcome_recorded","generated_at_ms":2,"class":"llm_timeout","policy":"retire_transport_and_retry","success":true,"failure_count_before":2,"failure_count_after":0,"progress_event_seen":true,"eval_window_events":32}}}
+"#,
+        )
+        .unwrap();
+
+        let dashboard = build_recovery_dashboard(workspace.as_path());
+        assert!(dashboard.contains("RECOVERY score=1.000"));
+        assert!(dashboard.contains("attempts=1"));
+        assert!(dashboard.contains("successes=1"));
+        assert!(dashboard.contains("classes=llm_timeout"));
+
+        let control = derive_semantic_control_prompt_state(workspace.as_path(), 4);
+        assert!(control.control_summary.contains("Recovery dashboard:"));
+        assert!(control.control_summary.contains("RECOVERY score=1.000"));
     }
 
     #[test]

@@ -80,6 +80,48 @@ impl Default for RecoveryConfig {
         Self {
             thresholds: vec![
                 threshold(
+                    ErrorClass::SecondMutationPath,
+                    1,
+                    300_000,
+                    1,
+                    RecoveryPolicy::EscalateSolo,
+                ),
+                threshold(
+                    ErrorClass::RuntimeControlBypass,
+                    1,
+                    300_000,
+                    1,
+                    RecoveryPolicy::ReplayTlogAndPurgeInvalidRuntimeState,
+                ),
+                threshold(
+                    ErrorClass::UncanonicalizedRecoveryPath,
+                    1,
+                    300_000,
+                    1,
+                    RecoveryPolicy::EscalateSolo,
+                ),
+                threshold(
+                    ErrorClass::CheckpointRuntimeDivergence,
+                    1,
+                    300_000,
+                    1,
+                    RecoveryPolicy::ReplayTlogAndPurgeInvalidRuntimeState,
+                ),
+                threshold(
+                    ErrorClass::EffectfulStateAdvanceWithoutControlEvent,
+                    1,
+                    300_000,
+                    1,
+                    RecoveryPolicy::EscalateSolo,
+                ),
+                threshold(
+                    ErrorClass::AmbiguousControlEvent,
+                    1,
+                    300_000,
+                    1,
+                    RecoveryPolicy::EscalateDiagnostics,
+                ),
+                threshold(
                     ErrorClass::MissingTarget,
                     2,
                     300_000,
@@ -95,7 +137,7 @@ impl Default for RecoveryConfig {
                 ),
                 threshold(
                     ErrorClass::LlmTimeout,
-                    2,
+                    1,
                     300_000,
                     2,
                     RecoveryPolicy::RetireTransportAndRetry,
@@ -129,7 +171,42 @@ impl Default for RecoveryConfig {
                     RecoveryPolicy::EscalateDiagnostics,
                 ),
                 threshold(
-                    ErrorClass::CheckpointRuntimeDivergence,
+                    ErrorClass::PlanPreflightFailed,
+                    1,
+                    300_000,
+                    2,
+                    RecoveryPolicy::ClearExecutorAndWakePlanner,
+                ),
+                threshold(
+                    ErrorClass::PermissionDenied,
+                    1,
+                    300_000,
+                    1,
+                    RecoveryPolicy::EscalateSolo,
+                ),
+                threshold(
+                    ErrorClass::ReadFileStall,
+                    3,
+                    300_000,
+                    2,
+                    RecoveryPolicy::ShrinkPromptAndRetry,
+                ),
+                threshold(
+                    ErrorClass::BlockerEscalated,
+                    2,
+                    300_000,
+                    1,
+                    RecoveryPolicy::EscalateDiagnostics,
+                ),
+                threshold(
+                    ErrorClass::UnauthorizedPlanOp,
+                    1,
+                    300_000,
+                    1,
+                    RecoveryPolicy::EscalateSolo,
+                ),
+                threshold(
+                    ErrorClass::LivelockDetected,
                     1,
                     300_000,
                     1,
@@ -142,8 +219,23 @@ impl Default for RecoveryConfig {
                     2,
                     RecoveryPolicy::EscalateDiagnostics,
                 ),
+                threshold(
+                    ErrorClass::Unknown,
+                    3,
+                    300_000,
+                    1,
+                    RecoveryPolicy::EscalateDiagnostics,
+                ),
             ],
         }
+    }
+}
+
+impl RecoveryConfig {
+    pub fn threshold_for_class(&self, class: &ErrorClass) -> Option<&RecoveryThreshold> {
+        self.thresholds
+            .iter()
+            .find(|threshold| threshold.enabled && &threshold.class == class)
     }
 }
 
@@ -170,10 +262,7 @@ pub fn decision_for_failure(
     support_count: usize,
     config: &RecoveryConfig,
 ) -> Option<RecoveryDecision> {
-    let threshold = config
-        .thresholds
-        .iter()
-        .find(|threshold| threshold.enabled && threshold.class == class)?;
+    let threshold = config.threshold_for_class(&class)?;
     if support_count < threshold.min_count {
         return None;
     }
@@ -203,7 +292,17 @@ pub fn classify_route_gate_reason(reason: &str) -> Option<ErrorClass> {
     if text.contains("invalid_route") {
         return Some(ErrorClass::InvalidRoute);
     }
+    for class in ErrorClass::ALL {
+        if reason_mentions_error_class(&text, &class) {
+            return Some(class);
+        }
+    }
     None
+}
+
+pub fn reason_mentions_error_class(lowercase_reason: &str, class: &ErrorClass) -> bool {
+    let key = class.as_key();
+    lowercase_reason.contains(key) || lowercase_reason.contains(&key.replace('_', " "))
 }
 
 pub fn canonical_actions_for_policy(policy: &RecoveryPolicy) -> Vec<RecoveryAction> {
@@ -272,21 +371,41 @@ mod tests {
     #[test]
     fn repeated_runtime_classes_have_default_policies() {
         let config = RecoveryConfig::default();
-        let covered = |class: ErrorClass| {
-            config
-                .thresholds
-                .iter()
-                .any(|threshold| threshold.enabled && threshold.class == class)
-        };
+        for class in ErrorClass::ALL.iter().cloned() {
+            assert!(
+                config.threshold_for_class(&class).is_some(),
+                "missing recovery threshold for {}",
+                class.as_key()
+            );
+            assert_eq!(
+                config
+                    .thresholds
+                    .iter()
+                    .filter(|threshold| threshold.enabled && threshold.class == class)
+                    .count(),
+                1,
+                "duplicate recovery threshold for {}",
+                class.as_key()
+            );
+        }
+    }
 
-        assert!(covered(ErrorClass::MissingTarget));
-        assert!(covered(ErrorClass::InvalidRoute));
-        assert!(covered(ErrorClass::LlmTimeout));
-        assert!(covered(ErrorClass::CompileError));
-        assert!(covered(ErrorClass::VerificationFailed));
-        assert!(covered(ErrorClass::InvalidSchema));
-        assert!(covered(ErrorClass::StepLimitExceeded));
-        assert!(covered(ErrorClass::CheckpointRuntimeDivergence));
-        assert!(covered(ErrorClass::ReactionOnly));
+    #[test]
+    fn safety_sensitive_classes_escalate_to_solo() {
+        let config = RecoveryConfig::default();
+        for class in [
+            ErrorClass::SecondMutationPath,
+            ErrorClass::UncanonicalizedRecoveryPath,
+            ErrorClass::EffectfulStateAdvanceWithoutControlEvent,
+            ErrorClass::PermissionDenied,
+            ErrorClass::UnauthorizedPlanOp,
+        ] {
+            assert_eq!(
+                config.threshold_for_class(&class).map(|t| &t.policy),
+                Some(&RecoveryPolicy::EscalateSolo),
+                "{} should require solo escalation",
+                class.as_key()
+            );
+        }
     }
 }

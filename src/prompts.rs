@@ -262,7 +262,10 @@ fn render_budgeted_item_body(item: &PromptBudgetItem<'_>) -> String {
     if item.budget <= marker.len() {
         return truncate_bytes(&marker, item.budget).to_string();
     }
+    render_budgeted_truncated_item_body(item, marker)
+}
 
+fn render_budgeted_truncated_item_body(item: &PromptBudgetItem<'_>, marker: String) -> String {
     let content_budget = item.budget - marker.len();
     let mut out = render_preserved_truncated_body(item.body, content_budget);
     let mut marker = prompt_truncation_marker(item, out.len());

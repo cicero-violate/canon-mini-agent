@@ -565,6 +565,7 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
     }
 
     score_recovery_windows(records, &mut signals);
+    score_suppressed_recovery_outcomes(records, &mut signals);
     signals.missing_action_results = llm_action_command_ids
         .difference(&action_result_command_ids)
         .count();
@@ -713,14 +714,17 @@ pub fn improvement_effectiveness_score(signals: &TlogDeltaSignals) -> f64 {
 }
 
 pub fn recovery_effectiveness_score(signals: &TlogDeltaSignals) -> f64 {
-    if signals.recovery_attempts == 0 {
+    let measured_recoveries = signals
+        .recovery_attempts
+        .saturating_add(signals.recovery_suppressed);
+    if measured_recoveries == 0 {
         return 1.0;
     }
     safe_ratio(
         signals
             .recovery_successes
             .saturating_add(signals.recovery_loop_breaks) as f64,
-        signals.recovery_attempts as f64,
+        measured_recoveries as f64,
     )
     .min(1.0)
 }
@@ -766,12 +770,62 @@ fn score_recovery_windows(records: &[crate::tlog::TlogRecord], signals: &mut Tlo
     }
 }
 
+fn score_suppressed_recovery_outcomes(
+    records: &[crate::tlog::TlogRecord],
+    signals: &mut TlogDeltaSignals,
+) {
+    for (idx, record) in records.iter().enumerate() {
+        let Event::Effect {
+            event: EffectEvent::RecoverySuppressed { class, .. },
+        } = &record.event
+        else {
+            continue;
+        };
+
+        let window_end = records.len().min(idx + 1 + RECOVERY_EVAL_WINDOW_EVENTS);
+        let window = &records[idx + 1..window_end];
+        let Some((success, failure_count_before, failure_count_after, progress_event_seen)) =
+            explicit_recovery_outcome(window, class)
+        else {
+            continue;
+        };
+
+        apply_recovery_outcome_score(
+            signals,
+            success,
+            failure_count_before,
+            failure_count_after,
+            progress_event_seen,
+        );
+    }
+}
+
 fn score_explicit_recovery_outcome(
     window: &[crate::tlog::TlogRecord],
     signals: &mut TlogDeltaSignals,
     class: &str,
 ) -> bool {
-    let Some(outcome) = window.iter().find_map(|record| match &record.event {
+    let Some((success, failure_count_before, failure_count_after, progress_event_seen)) =
+        explicit_recovery_outcome(window, class)
+    else {
+        return false;
+    };
+
+    apply_recovery_outcome_score(
+        signals,
+        success,
+        failure_count_before,
+        failure_count_after,
+        progress_event_seen,
+    );
+    true
+}
+
+fn explicit_recovery_outcome(
+    window: &[crate::tlog::TlogRecord],
+    class: &str,
+) -> Option<(bool, usize, usize, bool)> {
+    window.iter().find_map(|record| match &record.event {
         Event::Effect {
             event:
                 EffectEvent::RecoveryOutcomeRecorded {
@@ -789,11 +843,16 @@ fn score_explicit_recovery_outcome(
             *progress_event_seen,
         )),
         _ => None,
-    }) else {
-        return false;
-    };
+    })
+}
 
-    let (success, failure_count_before, failure_count_after, progress_event_seen) = outcome;
+fn apply_recovery_outcome_score(
+    signals: &mut TlogDeltaSignals,
+    success: bool,
+    failure_count_before: usize,
+    failure_count_after: usize,
+    progress_event_seen: bool,
+) {
     if success {
         signals.recovery_successes = signals.recovery_successes.saturating_add(1);
         if failure_count_after < failure_count_before || progress_event_seen {
@@ -803,7 +862,6 @@ fn score_explicit_recovery_outcome(
         signals.recovery_failures = signals.recovery_failures.saturating_add(1);
         signals.recovery_regressions = signals.recovery_regressions.saturating_add(1);
     }
-    true
 }
 
 fn recovery_progress_event_seen(record: &crate::tlog::TlogRecord) -> bool {
@@ -1772,5 +1830,107 @@ mod tests {
         assert_eq!(signals.recovery_successes, 0);
         assert_eq!(signals.recovery_failures, 1);
         assert_eq!(signals.recovery_effectiveness_score, 0.0);
+    }
+
+    #[test]
+    fn explicit_recovery_outcome_counts_success_without_heuristic_window() {
+        let records = vec![
+            crate::tlog::TlogRecord {
+                seq: 1,
+                ts_ms: 1,
+                event: Event::effect(EffectEvent::RecoveryTriggered {
+                    generated_at_ms: 1,
+                    class: "missing_target".to_string(),
+                    policy: "clear_executor_and_wake_planner".to_string(),
+                    reason: "path does not exist".to_string(),
+                    support_count: 2,
+                    threshold: 2,
+                    window_ms: 300_000,
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 2,
+                ts_ms: 2,
+                event: Event::effect(EffectEvent::RecoveryOutcomeRecorded {
+                    generated_at_ms: 2,
+                    class: "missing_target".to_string(),
+                    policy: "clear_executor_and_wake_planner".to_string(),
+                    success: true,
+                    failure_count_before: 2,
+                    failure_count_after: 0,
+                    progress_event_seen: true,
+                    eval_window_events: 0,
+                }),
+            },
+        ];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.recovery_attempts, 1);
+        assert_eq!(signals.recovery_successes, 1);
+        assert_eq!(signals.recovery_failures, 0);
+        assert_eq!(signals.recovery_loop_breaks, 1);
+        assert_eq!(signals.recovery_effectiveness_score, 1.0);
+    }
+
+    #[test]
+    fn recovery_suppression_counts_as_measured_non_success() {
+        let records = vec![crate::tlog::TlogRecord {
+            seq: 1,
+            ts_ms: 1,
+            event: Event::effect(EffectEvent::RecoverySuppressed {
+                generated_at_ms: 1,
+                class: "missing_target".to_string(),
+                policy: "clear_executor_and_wake_planner".to_string(),
+                reason: "path does not exist".to_string(),
+                suppression_reason:
+                    "retry_budget_exhausted attempt_count=2 max_attempts=2".to_string(),
+            }),
+        }];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.recovery_attempts, 0);
+        assert_eq!(signals.recovery_suppressed, 1);
+        assert_eq!(signals.recovery_successes, 0);
+        assert_eq!(signals.recovery_effectiveness_score, 0.0);
+    }
+
+    #[test]
+    fn recovery_suppression_with_terminal_cleanup_counts_success() {
+        let records = vec![
+            crate::tlog::TlogRecord {
+                seq: 1,
+                ts_ms: 1,
+                event: Event::effect(EffectEvent::RecoverySuppressed {
+                    generated_at_ms: 1,
+                    class: "missing_target".to_string(),
+                    policy: "clear_executor_and_wake_planner".to_string(),
+                    reason: "path does not exist".to_string(),
+                    suppression_reason:
+                        "retry_budget_exhausted attempt_count=2 max_attempts=2".to_string(),
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 2,
+                ts_ms: 2,
+                event: Event::effect(EffectEvent::RecoveryOutcomeRecorded {
+                    generated_at_ms: 2,
+                    class: "missing_target".to_string(),
+                    policy: "clear_executor_and_wake_planner".to_string(),
+                    success: true,
+                    failure_count_before: 2,
+                    failure_count_after: 0,
+                    progress_event_seen: true,
+                    eval_window_events: 4,
+                }),
+            },
+        ];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.recovery_attempts, 0);
+        assert_eq!(signals.recovery_suppressed, 1);
+        assert_eq!(signals.recovery_successes, 1);
+        assert_eq!(signals.recovery_failures, 0);
+        assert_eq!(signals.recovery_loop_breaks, 1);
+        assert_eq!(signals.recovery_effectiveness_score, 1.0);
     }
 }
