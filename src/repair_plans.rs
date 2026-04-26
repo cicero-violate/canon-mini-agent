@@ -482,25 +482,45 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     {
         let error_rate = get_f64("semantic_fn_error_rate");
         let low_conf = get_f64("semantic_fn_low_confidence_rate");
+        let low_conf_count = get_u64("semantic_fn_low_confidence");
         let intent = get_f64("semantic_fn_intent_coverage");
         plan!(
             metric: "semantic_contract",
             target: 0.50,
             score_key: "semantic_contract",
             score_default: 0.0,
-            goal: "semantic_contract >= 0.50: error rate = 0, intent coverage rising".to_string(),
+            goal: "semantic_contract >= 0.50: intent coverage above 54%, \
+                low-confidence rate below 46%".to_string(),
             trigger: format!(
                 "fn_error_rate={error_rate:.4}  intent_coverage={intent:.4}  \
-                low_confidence_rate={low_conf:.4}"
+                low_confidence_rate={low_conf:.4}  ({low_conf_count} fns lack \
+                structural intent signal)"
             ),
-            policy: "regenerate_semantic_artifacts",
-            action: "run canon-generate-issues --complexity-report-only; reduce \
-                fn_with_any_error to 0 before treating low-confidence as failure".to_string(),
-            verify: "semantic_contract >= 0.50 on next eval OR fn_error_rate = 0.0".to_string(),
+            policy: "enrich_semantic_intent_annotations",
+            action: "for each unknown_low_confidence fn in \
+                agent_state/semantic_manifest_proposals.json: \
+                (1) read its effects/calls/resource fields from the manifest — \
+                these are already extracted from graph.json; \
+                (2) determine the correct intent class from structural evidence \
+                (e.g. effects=[state_read] + returns bool → validation_gate, \
+                effects=[none] + pure inputs/outputs → pure_transform, \
+                calls=[append_blocker|record_action_failure] → event_append); \
+                (3) add exactly two lines before the fn in source: \
+                '/// Intent: {class}' and '/// Resource: {resource}'; \
+                (4) run cargo check — the rustc wrapper re-analyzes and \
+                reclassifies the fn from unknown_low_confidence to the \
+                declared class. \
+                Do NOT add generic labels — only annotate when the manifest \
+                evidence (effects, calls, resource) clearly supports the class."
+                .to_string(),
+            verify: "semantic_intent increases on next eval (at least one fn \
+                moves from unknown_low_confidence to a specific class)".to_string(),
             machine_verify: VerifySpec::ScoreAbove { metric: "semantic_contract", threshold: 0.50 },
             owner: "executor",
-            evidence: "agent_state/semantic_manifest_proposals.json, \
-                agent_state/reports/complexity/latest.json",
+            evidence: "agent_state/semantic_manifest_proposals.json \
+                (fn_low_confidence list with effects/calls/resource per fn), \
+                state/rustc/canon_mini_agent/graph.json (intent_class, \
+                effects edges per node)",
         );
     }
 

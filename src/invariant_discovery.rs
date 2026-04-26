@@ -1620,9 +1620,21 @@ fn build_tlog_invariant_lifecycle_gap_fingerprint(
 
 /// Convert classified blocker records directly into fingerprints — no text heuristics.
 fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
+    use crate::error_class::ErrorClass;
+    // Graph-analysis classes are emitted by the static analyzer, not by runtime
+    // roles.  Synthesizing invariant gates for them is incorrect — they would
+    // block roles based on structural source code gaps that have no runtime
+    // manifestation.  Skip them here; they still feed blocker_class_coverage.
+    let graph_analysis_classes = [
+        ErrorClass::MissingClassificationPath,
+        ErrorClass::UnreachableRecoveryDispatch,
+        ErrorClass::UncanonicalizedStateTransition,
+    ];
+
     let file = crate::blockers::load_blockers(workspace);
     file.blockers
         .iter()
+        .filter(|b| !graph_analysis_classes.contains(&b.error_class))
         .map(|b| {
             let raw = serde_json::json!({
                 "id": b.id,
@@ -1714,6 +1726,11 @@ fn normalize_non_blocking_health_invariants(file: &mut EnforcedInvariantsFile) {
             if inv.status == InvariantStatus::Enforced {
                 inv.status = InvariantStatus::Promoted;
             }
+            inv.gates.clear();
+        }
+
+        if invariant_has_condition(inv, "error_class", "uncanonicalized_state_transition") {
+            inv.status = InvariantStatus::Collapsed;
             inv.gates.clear();
         }
     }
@@ -2505,6 +2522,14 @@ pub fn persist_enforced_invariants_projection_with_writer(
         &normalized,
         writer.as_deref_mut(),
         Some(crate::events::EffectEvent::EnforcedInvariantsRecorded {
+            invariant_count: normalized.invariants.len(),
+            status_counts: {
+                let mut counts = std::collections::BTreeMap::new();
+                for inv in &normalized.invariants {
+                    *counts.entry(format!("{:?}", inv.status)).or_insert(0) += 1;
+                }
+                counts
+            },
             file: normalized.clone(),
         }),
     )
@@ -2673,7 +2698,7 @@ fn status_rank(status: &InvariantStatus) -> u8 {
 /// Provenance: rustc:facts + rustc:docstring
 fn load_invariants_from_tlog(workspace: &Path) -> Option<EnforcedInvariantsFile> {
     crate::tlog::Tlog::latest_effect_from_workspace(workspace, |event| match event {
-        crate::events::EffectEvent::EnforcedInvariantsRecorded { file } => Some(file),
+        crate::events::EffectEvent::EnforcedInvariantsRecorded { file, .. } => Some(file),
         _ => None,
     })
 }

@@ -362,7 +362,12 @@ pub enum EffectEvent {
         report: crate::reports::DiagnosticsReport,
     },
     EnforcedInvariantsRecorded {
+        #[serde(default)]
         file: crate::invariants::EnforcedInvariantsFile,
+        #[serde(default)]
+        invariant_count: usize,
+        #[serde(default)]
+        status_counts: BTreeMap<String, usize>,
     },
     ViolationsReportRecorded {
         report: crate::reports::ViolationsReport,

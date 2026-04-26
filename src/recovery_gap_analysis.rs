@@ -32,7 +32,6 @@
 ///     from any canonical_writer function via the forward call graph.
 ///     State mutation bypasses the canonical writer — potential loophole.
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use serde::Deserialize;
@@ -148,11 +147,14 @@ fn is_fn_node(node: &GraphNode) -> bool {
 // ── Stable blocker id ─────────────────────────────────────────────────────────
 
 fn stable_gap_id(error_class_key: &str, fn_path: &str) -> String {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    fn_path.hash(&mut hasher);
-    let h = hasher.finish();
+    // FNV-1a hash — deterministic across processes (DefaultHasher is NOT).
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in fn_path.bytes() {
+        h ^= byte as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
     let ec_slug = error_class_key.replace('_', "-");
-    format!("graph-{ec_slug}-{h:012x}")
+    format!("graph-{ec_slug}-{h:016x}")
 }
 
 // ── Gap 1: MissingClassificationPath ─────────────────────────────────────────
