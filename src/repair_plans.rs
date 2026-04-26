@@ -109,7 +109,8 @@ pub fn build_all_active_plans(
     plans.sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
-            .then(std::cmp::Ordering::Equal)
+            .then_with(|| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| a.id.cmp(&b.id))
     });
     plans.truncate(max_count);
     plans
