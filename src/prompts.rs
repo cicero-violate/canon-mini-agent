@@ -862,10 +862,16 @@ pub(crate) fn executor_cycle_prompt(
     lane_label: &str,
     latest_verify_result: &str,
     ready_tasks: &str,
+    semantic_control: &str,
 ) -> String {
     let workspace = workspace();
     let guided_review = crate::structured_questions::guided_review_block("executor cycle boundary");
     let pipeline_contract = canonical_pipeline_prompt_block();
+    let semantic_control = if semantic_control.trim().is_empty() {
+        "(semantic control unavailable)".to_string()
+    } else {
+        semantic_control.trim().to_string()
+    };
     let verify_result = if latest_verify_result.trim().is_empty()
         || latest_verify_result
             .trim()
@@ -876,7 +882,7 @@ pub(crate) fn executor_cycle_prompt(
         latest_verify_result.to_string()
     };
     format!(
-        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\n{pipeline_contract}\n\n{guided_review}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nGraph-first execution: consult `state/rustc/canon_mini_agent/graph.json`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json` before patching so edits align with ranked semantic candidates and manifest contracts.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nUse `message` primarily for blocker escalation or unresolved partial completion evidence."
+        "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nREADY TASKS (from {MASTER_PLAN_FILE}, top-10 by plan order):\n{ready_tasks}\n\nSemantic control state (tlog-derived authority + projected views):\n{semantic_control}\n\n{pipeline_contract}\n\n{guided_review}\n\nLane plans are deprecated. Use {MASTER_PLAN_FILE} and current planner-phase outputs for task selection.\nExecutor eval contract: before patching, bind the selected ready task to the EVAL HEADER. If `eval_gate=fail`, clear that violation first. Otherwise, execute work that improves the current weakest eval dimension; completion evidence must name the validation command and whether it proves the expected Δeval.\nGraph-first execution: consult `state/rustc/canon_mini_agent/graph.json`, `agent_state/safe_patch_candidates.json`, and `agent_state/semantic_manifest_proposals.json` before patching so edits align with ranked semantic candidates and manifest contracts.\nLatest verifier result for lane {lane_label}:\n{verify_result}\n\nUse `message` primarily for blocker escalation or unresolved partial completion evidence."
     )
 }
 
@@ -2356,9 +2362,24 @@ mod tests {
     #[test]
     fn cycle_prompts_include_canonical_pipeline_contract() {
         let planner = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
-        let executor = executor_cycle_prompt("executor", "executor_pool", "", "[]");
+        let executor = executor_cycle_prompt("executor", "executor_pool", "", "[]", "");
         assert!(planner.contains("CANONICAL_PIPELINE.md"));
         assert!(executor.contains("CANONICAL_PIPELINE.md"));
+    }
+
+    #[test]
+    fn executor_cycle_prompt_includes_eval_header_and_eval_contract() {
+        let prompt = executor_cycle_prompt(
+            "executor",
+            "executor_pool",
+            "",
+            "[]",
+            "EVAL HEADER:\nEVAL score=0.426  weakest=objective_progress(0.000)\neval_focus=objective_progress reason=lowest eval dimension",
+        );
+
+        assert!(prompt.contains("EVAL HEADER:\nEVAL score=0.426"));
+        assert!(prompt.contains("Executor eval contract:"));
+        assert!(prompt.contains("expected Δeval"));
     }
 
     #[test]

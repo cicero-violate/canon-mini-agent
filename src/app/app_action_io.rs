@@ -13,6 +13,16 @@ pub(super) fn guardrail_reaction_only_action(role: &str) -> Value {
 
 pub(super) fn guardrail_diff_message_action(raw: &str, role: &str) -> Value {
     let (from, to, msg_type, status) = default_message_route(role);
+    guardrail_diff_message_envelope(raw, from, to, msg_type, status)
+}
+
+fn guardrail_diff_message_envelope(
+    raw: &str,
+    from: &str,
+    to: &str,
+    msg_type: &str,
+    status: &str,
+) -> Value {
     json!({
         "action": "message",
         "from": from,

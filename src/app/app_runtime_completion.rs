@@ -1160,6 +1160,10 @@ pub(super) async fn submit_executor_turn(
 ) -> Result<String> {
     let ready_tasks =
         crate::prompt_inputs::read_ready_tasks(&std::path::PathBuf::from(workspace()), 10);
+    let semantic_control = crate::prompt_inputs::read_semantic_control_prompt_context(
+        &std::path::PathBuf::from(workspace()),
+        10,
+    );
     let restart_resume = peek_post_restart_result(&job.executor_role);
     let mut exec_prompt = if let Some(resume) = restart_resume.as_ref() {
         let prompt = restart_resume_banner(&job.executor_role, resume);
@@ -1171,6 +1175,7 @@ pub(super) async fn submit_executor_turn(
             job.label.as_str(),
             &job.latest_verify_result,
             &ready_tasks,
+            &semantic_control,
         )
     };
     if let Some(inbound) = take_external_user_message_without_writer("executor") {

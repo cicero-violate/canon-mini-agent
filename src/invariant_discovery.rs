@@ -1853,13 +1853,7 @@ fn extract_forced_handoff_fingerprint(
     text: &str,
     ts_ms: u64,
 ) -> Option<Fingerprint> {
-    let mentions_handoff =
-        action == "message" || text.contains("FORCED HANDOFF") || text.contains("step budget");
-    let is_forced = (actor.starts_with("executor") && text.contains("forced"))
-        || text.contains("step limit")
-        || text.contains("FORCED HANDOFF");
-
-    if !mentions_handoff || !is_forced {
+    if !mentions_forced_handoff(action, text) || !has_forced_executor_stall(actor, text) {
         return None;
     }
 
@@ -1872,6 +1866,16 @@ fn extract_forced_handoff_fingerprint(
         ts_ms,
         evidence: failure_evidence_sample(entry, ts_ms),
     })
+}
+
+fn mentions_forced_handoff(action: &str, text: &str) -> bool {
+    action == "message" || text.contains("FORCED HANDOFF") || text.contains("step budget")
+}
+
+fn has_forced_executor_stall(actor: &str, text: &str) -> bool {
+    (actor.starts_with("executor") && text.contains("forced"))
+        || text.contains("step limit")
+        || text.contains("FORCED HANDOFF")
 }
 
 /// Intent: pure_transform
