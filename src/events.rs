@@ -448,6 +448,15 @@ pub enum EffectEvent {
         threshold: usize,
         window_ms: u64,
     },
+    ProjectionRefreshRecoveryRequested {
+        generated_at_ms: u64,
+        class: String,
+        policy: String,
+        projection: String,
+        command: String,
+        timeout_ms: u64,
+        reason: String,
+    },
     RecoverySuppressed {
         generated_at_ms: u64,
         class: String,

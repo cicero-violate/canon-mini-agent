@@ -305,6 +305,48 @@ mod tests {
     }
 
     #[test]
+    fn route_gate_projection_refresh_recovery_is_connected_to_eval_evidence() {
+        let source = include_str!("app_planner_executor.rs");
+        let projection_policy = source
+            .find("RecoveryPolicy::RefreshProjectionBounded")
+            .expect("route recovery must branch on projection refresh policy");
+        let projection_request = source[projection_policy..]
+            .find("EffectEvent::ProjectionRefreshRecoveryRequested")
+            .map(|offset| projection_policy + offset)
+            .expect("projection refresh recovery must emit typed tlog evidence");
+        let correct_command = source[projection_policy..]
+            .find("--complexity-report-only")
+            .map(|offset| projection_policy + offset)
+            .expect("projection refresh recovery must target the complexity latest projection");
+        let bounded_timeout = source[projection_policy..]
+            .find("PROJECTION_REFRESH_RECOVERY_TIMEOUT_MS")
+            .map(|offset| projection_policy + offset)
+            .expect("projection refresh recovery must carry a bounded timeout");
+        let diagnostics_route = source[projection_request..]
+            .find("apply_scheduled_phase_if_changed(writer, Some(\"diagnostics\"));")
+            .map(|offset| projection_request + offset)
+            .expect("projection refresh recovery must route diagnostics for refresh execution");
+        let diagnostics_pending = source[diagnostics_route..]
+            .find("ControlEvent::DiagnosticsPendingSet { pending: true }")
+            .map(|offset| diagnostics_route + offset)
+            .expect("projection refresh recovery must mark diagnostics pending");
+        let outcome = source[diagnostics_pending..]
+            .find("EffectEvent::RecoveryOutcomeRecorded")
+            .map(|offset| diagnostics_pending + offset)
+            .expect("projection refresh recovery must record a typed outcome for eval");
+
+        assert!(
+            projection_policy < projection_request
+                && projection_policy < correct_command
+                && projection_policy < bounded_timeout
+                && projection_request < diagnostics_route
+                && diagnostics_route < diagnostics_pending
+                && diagnostics_pending < outcome,
+            "projection recovery must be policy-gated, carry bounded complexity refresh command evidence, then route diagnostics and record eval outcome"
+        );
+    }
+
+    #[test]
     fn repeated_missing_target_route_violation_triggers_recovery_count() {
         let _guard = global_state_lock().lock().unwrap();
         let ws = temp_workspace("missing-target-recovery-count");

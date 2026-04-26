@@ -52,6 +52,8 @@ pub enum ErrorClass {
     PermissionDenied,
     /// The same file was read N times by the same role without any mutation.
     ReadFileStall,
+    /// A derived projection refresh stayed in-flight or failed to update its latest artifact.
+    ProjectionRefreshStalled,
     /// A role was dispatched when its preconditions were not satisfied
     /// (e.g. executor dispatched with no ready tasks).
     InvalidRoute,
@@ -72,7 +74,7 @@ pub enum ErrorClass {
 }
 
 impl ErrorClass {
-    pub const ALL: [ErrorClass; 21] = [
+    pub const ALL: [ErrorClass; 22] = [
         ErrorClass::SecondMutationPath,
         ErrorClass::RuntimeControlBypass,
         ErrorClass::UncanonicalizedRecoveryPath,
@@ -86,6 +88,7 @@ impl ErrorClass {
         ErrorClass::CompileError,
         ErrorClass::PermissionDenied,
         ErrorClass::ReadFileStall,
+        ErrorClass::ProjectionRefreshStalled,
         ErrorClass::InvalidRoute,
         ErrorClass::BlockerEscalated,
         ErrorClass::UnauthorizedPlanOp,
@@ -149,6 +152,10 @@ impl ErrorClass {
             ErrorClass::ReadFileStall => (
                 "read_file_stall",
                 "same file read multiple times by the same role without any mutation",
+            ),
+            ErrorClass::ProjectionRefreshStalled => (
+                "projection_refresh_stalled",
+                "derived projection regeneration stayed in-flight or left latest artifacts stale",
             ),
             ErrorClass::InvalidRoute => (
                 "invalid_route",
@@ -321,6 +328,21 @@ fn is_permission_denied_text(text: &str) -> bool {
     contains_any(text, &["permission denied", "access denied"])
 }
 
+fn is_projection_refresh_stalled_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &[
+            "projection refresh stalled",
+            "projection remains stale",
+            "projection verification remains blocked",
+            "stale latest.json",
+            "latest.json remains stale",
+            "long-running regeneration",
+            "refresh pid",
+        ],
+    )
+}
+
 fn is_blocker_tool_unavailable_text(text: &str) -> bool {
     contains_any(
         text,
@@ -425,6 +447,9 @@ fn classify_structural_failure_text(text: &str) -> Option<ErrorClass> {
 }
 
 fn classify_terminal_failure_text(text: &str) -> Option<ErrorClass> {
+    if is_projection_refresh_stalled_text(text) {
+        return Some(ErrorClass::ProjectionRefreshStalled);
+    }
     if is_missing_target_text(text) {
         return Some(ErrorClass::MissingTarget);
     }
@@ -461,6 +486,9 @@ fn classify_blocker_summary_text(text: &str) -> ErrorClass {
 fn classify_blocker_summary_match(text: &str) -> Option<ErrorClass> {
     if is_blocker_tool_unavailable_text(text) {
         return Some(ErrorClass::PermissionDenied);
+    }
+    if is_projection_refresh_stalled_text(text) {
+        return Some(ErrorClass::ProjectionRefreshStalled);
     }
     if contains_any(text, &["step limit", "budget", "too many steps"]) {
         return Some(ErrorClass::StepLimitExceeded);
@@ -602,12 +630,34 @@ mod tests {
     }
 
     #[test]
+    fn classify_projection_refresh_stalled_from_executor_blocker() {
+        let class = classify_blocker_summary(
+            "Eval projection verification remains blocked by long-running regeneration and stale latest.json",
+        );
+        assert_eq!(class, ErrorClass::ProjectionRefreshStalled);
+    }
+
+    #[test]
+    fn classify_projection_refresh_stalled_from_run_command_failure() {
+        let class = classify_result(
+            "run_command",
+            "refresh pid 1596670 still running and latest.json remains stale",
+            false,
+        );
+        assert_eq!(class, ErrorClass::ProjectionRefreshStalled);
+    }
+
+    #[test]
     fn error_class_key_is_stable() {
         assert_eq!(ErrorClass::MissingTarget.as_key(), "missing_target");
         assert_eq!(ErrorClass::BlockerEscalated.as_key(), "blocker_escalated");
         assert_eq!(
             ErrorClass::RuntimeControlBypass.as_key(),
             "runtime_control_bypass"
+        );
+        assert_eq!(
+            ErrorClass::ProjectionRefreshStalled.as_key(),
+            "projection_refresh_stalled"
         );
     }
 }

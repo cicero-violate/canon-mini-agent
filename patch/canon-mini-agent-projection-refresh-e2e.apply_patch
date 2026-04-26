@@ -1,0 +1,252 @@
+*** Begin Patch
+*** Update File: src/events.rs
+@@
+     RecoveryTriggered {
+         generated_at_ms: u64,
+         class: String,
+         policy: String,
+         reason: String,
+         support_count: usize,
+         threshold: usize,
+         window_ms: u64,
+     },
++    ProjectionRefreshRecoveryRequested {
++        generated_at_ms: u64,
++        class: String,
++        policy: String,
++        projection: String,
++        command: String,
++        timeout_ms: u64,
++        reason: String,
++    },
+     RecoverySuppressed {
+         generated_at_ms: u64,
+         class: String,
+         policy: String,
+         reason: String,
+*** Update File: src/app/app_planner_executor.rs
+@@
+-            apply_recovery_decision(writer, &decision);
++            apply_recovery_decision(writer, ws, &decision);
+@@
+ pub(super) fn apply_recovery_decision(
+     writer: &mut CanonicalWriter,
++    ws: &std::path::Path,
+     decision: &crate::recovery::RecoveryDecision,
+ ) {
+     record_recovery_triggered(writer, decision);
+-    if decision.policy != crate::recovery::RecoveryPolicy::ClearExecutorAndWakePlanner {
+-        record_recovery_outcome(writer, decision, false, decision.support_count, false, 0);
+-        return;
++    match decision.policy {
++        crate::recovery::RecoveryPolicy::ClearExecutorAndWakePlanner => {
++            apply_clear_executor_and_wake_planner_recovery(writer, decision)
++        }
++        crate::recovery::RecoveryPolicy::RefreshProjectionBounded => {
++            apply_bounded_projection_refresh_recovery(writer, ws, decision)
++        }
++        _ => {
++            record_recovery_outcome(writer, decision, false, decision.support_count, false, 0);
++        }
+     }
++}
++
++fn apply_clear_executor_and_wake_planner_recovery(
++    writer: &mut CanonicalWriter,
++    decision: &crate::recovery::RecoveryDecision,
++) {
+     let pending_lanes_before = claimable_executor_pending_lane_count(writer);
+     let executor_wake_before = writer.state().wake_signals_pending.contains_key("executor");
+     let scheduled_phase_before = writer.state().scheduled_phase.clone();
+@@
+         lane_ids
+     );
+ }
+
++const PROJECTION_REFRESH_RECOVERY_TIMEOUT_MS: u64 = 30_000;
++
++fn projection_refresh_recovery_command(ws: &std::path::Path) -> String {
++    format!(
++        "timeout 30s cargo run -p canon-mini-agent --bin canon-generate-issues -- --workspace {} --complexity-report-only",
++        ws.display()
++    )
++}
++
++fn apply_bounded_projection_refresh_recovery(
++    writer: &mut CanonicalWriter,
++    ws: &std::path::Path,
++    decision: &crate::recovery::RecoveryDecision,
++) {
++    let diagnostics_pending_before = writer.state().diagnostics_pending;
++    let scheduled_phase_before = writer.state().scheduled_phase.clone();
++    let planner_pending_before = writer.state().planner_pending;
++    let command = projection_refresh_recovery_command(ws);
++    writer.record_effect(crate::events::EffectEvent::ProjectionRefreshRecoveryRequested {
++        generated_at_ms: crate::logging::now_ms(),
++        class: decision.class.as_key().to_string(),
++        policy: decision.policy.as_key().to_string(),
++        projection: "agent_state/reports/complexity/latest.json".to_string(),
++        command,
++        timeout_ms: PROJECTION_REFRESH_RECOVERY_TIMEOUT_MS,
++        reason: decision.reason.clone(),
++    });
++    apply_scheduled_phase_if_changed(writer, Some("diagnostics"));
++    if !writer.state().diagnostics_pending {
++        writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
++    }
++    if !writer.state().planner_pending {
++        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
++    }
++
++    let routed_to_diagnostics = writer.state().scheduled_phase.as_deref() == Some("diagnostics");
++    let diagnostics_pending_after = writer.state().diagnostics_pending;
++    let planner_pending_after = writer.state().planner_pending;
++    let state_delta_count = usize::from(scheduled_phase_before.as_deref() != Some("diagnostics") && routed_to_diagnostics)
++        + usize::from(!diagnostics_pending_before && diagnostics_pending_after)
++        + usize::from(!planner_pending_before && planner_pending_after);
++    let state_delta_seen = state_delta_count > 0;
++    let final_state_repaired = routed_to_diagnostics && diagnostics_pending_after && planner_pending_after;
++    let success = state_delta_seen && final_state_repaired;
++    record_recovery_outcome(
++        writer,
++        decision,
++        success,
++        if success { 0 } else { decision.support_count },
++        state_delta_seen,
++        state_delta_count,
++    );
++    eprintln!(
++        "[route_recovery] class={} policy={} projection=agent_state/reports/complexity/latest.json bounded_refresh_requested diagnostics_pending={} success={}",
++        decision.class.as_key(),
++        decision.policy.as_key(),
++        diagnostics_pending_after,
++        success
++    );
++}
++
+
+ fn apply_suppressed_route_gate_terminal_cleanup(
+*** Update File: src/evaluation.rs
+@@
+         Event::Effect {
+             event: EffectEvent::WorkspaceArtifactWriteApplied { .. },
+         } => true,
++        Event::Effect {
++            event: EffectEvent::ProjectionRefreshRecoveryRequested { .. },
++        } => true,
+         Event::Effect {
+             event:
+                 EffectEvent::EvalScoreRecorded {
+@@
+         "compile_error" => text.contains("cargo") || text.contains("compile"),
+         "verification_failed" => text.contains("verification"),
++        "projection_refresh_stalled" => {
++            text.contains("projection refresh stalled")
++                || text.contains("projection remains stale")
++                || text.contains("stale latest.json")
++                || text.contains("latest.json remains stale")
++                || text.contains("long-running regeneration")
++                || text.contains("refresh pid")
++        }
+         "invalid_schema" => text.contains("schema"),
+         "step_limit_exceeded" => text.contains("step limit") || text.contains("step budget"),
+         "checkpoint_runtime_divergence" => text.contains("checkpoint"),
+@@
+     fn recovery_trigger_followed_by_same_failure_counts_failure() {
+@@
+         assert_eq!(signals.recovery_effectiveness_score, 0.0);
+     }
++
++    #[test]
++    fn projection_refresh_request_counts_as_recovery_progress() {
++        let records = vec![
++            crate::tlog::TlogRecord {
++                seq: 1,
++                ts_ms: 1,
++                event: Event::effect(EffectEvent::RecoveryTriggered {
++                    generated_at_ms: 1,
++                    class: "projection_refresh_stalled".to_string(),
++                    policy: "refresh_projection_bounded".to_string(),
++                    reason: "refresh pid is still running and latest.json remains stale".to_string(),
++                    support_count: 1,
++                    threshold: 1,
++                    window_ms: 300_000,
++                }),
++            },
++            crate::tlog::TlogRecord {
++                seq: 2,
++                ts_ms: 2,
++                event: Event::effect(EffectEvent::ProjectionRefreshRecoveryRequested {
++                    generated_at_ms: 2,
++                    class: "projection_refresh_stalled".to_string(),
++                    policy: "refresh_projection_bounded".to_string(),
++                    projection: "agent_state/reports/complexity/latest.json".to_string(),
++                    command: "timeout 30s cargo run -p canon-mini-agent --bin canon-generate-issues -- --workspace /tmp/ws --complexity-report-only".to_string(),
++                    timeout_ms: 30_000,
++                    reason: "refresh pid is still running and latest.json remains stale".to_string(),
++                }),
++            },
++        ];
++
++        let signals = evaluate_tlog_delta_invariants(&records);
++        assert_eq!(signals.recovery_attempts, 1);
++        assert_eq!(signals.recovery_successes, 1);
++        assert_eq!(signals.recovery_failures, 0);
++        assert_eq!(signals.recovery_effectiveness_score, 1.0);
++    }
+
+     #[test]
+     fn explicit_recovery_outcome_counts_success_without_heuristic_window() {
+*** Update File: src/app/app_tests.rs
+@@
+     fn route_gate_missing_target_recovery_is_tlog_driven_and_canonical() {
+         let source = include_str!("app_planner_executor.rs");
+@@
+         );
+     }
++
++    #[test]
++    fn route_gate_projection_refresh_recovery_is_connected_to_eval_evidence() {
++        let source = include_str!("app_planner_executor.rs");
++        let projection_policy = source
++            .find("RecoveryPolicy::RefreshProjectionBounded")
++            .expect("route recovery must branch on projection refresh policy");
++        let projection_request = source[projection_policy..]
++            .find("EffectEvent::ProjectionRefreshRecoveryRequested")
++            .map(|offset| projection_policy + offset)
++            .expect("projection refresh recovery must emit typed tlog evidence");
++        let correct_command = source[projection_request..]
++            .find("--complexity-report-only")
++            .map(|offset| projection_request + offset)
++            .expect("projection refresh recovery must target the complexity latest projection");
++        let bounded_timeout = source[correct_command..]
++            .find("PROJECTION_REFRESH_RECOVERY_TIMEOUT_MS")
++            .map(|offset| correct_command + offset)
++            .expect("projection refresh recovery must carry a bounded timeout");
++        let diagnostics_route = source[bounded_timeout..]
++            .find("apply_scheduled_phase_if_changed(writer, Some(\"diagnostics\"));")
++            .map(|offset| bounded_timeout + offset)
++            .expect("projection refresh recovery must route diagnostics for refresh execution");
++        let diagnostics_pending = source[diagnostics_route..]
++            .find("ControlEvent::DiagnosticsPendingSet { pending: true }")
++            .map(|offset| diagnostics_route + offset)
++            .expect("projection refresh recovery must mark diagnostics pending");
++        let outcome = source[diagnostics_pending..]
++            .find("EffectEvent::RecoveryOutcomeRecorded")
++            .map(|offset| diagnostics_pending + offset)
++            .expect("projection refresh recovery must record a typed outcome for eval");
++
++        assert!(
++            projection_policy < projection_request
++                && projection_request < correct_command
++                && correct_command < bounded_timeout
++                && bounded_timeout < diagnostics_route
++                && diagnostics_route < diagnostics_pending
++                && diagnostics_pending < outcome,
++            "projection recovery must be policy -> bounded refresh request -> diagnostics route -> eval outcome"
++        );
++    }
+
+     #[test]
+     fn repeated_missing_target_route_violation_triggers_recovery_count() {
+*** End Patch

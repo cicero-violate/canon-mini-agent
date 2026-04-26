@@ -10,6 +10,7 @@ pub enum RecoveryPolicy {
     RetireTransportAndRetry,
     RouteCompilerEvidenceToExecutor,
     ShrinkPromptAndRetry,
+    RefreshProjectionBounded,
     ReplayTlogAndPurgeInvalidRuntimeState,
     EscalateDiagnostics,
     EscalateSolo,
@@ -23,6 +24,7 @@ impl RecoveryPolicy {
             RecoveryPolicy::RetireTransportAndRetry => "retire_transport_and_retry",
             RecoveryPolicy::RouteCompilerEvidenceToExecutor => "route_compiler_evidence_to_executor",
             RecoveryPolicy::ShrinkPromptAndRetry => "shrink_prompt_and_retry",
+            RecoveryPolicy::RefreshProjectionBounded => "refresh_projection_bounded",
             RecoveryPolicy::ReplayTlogAndPurgeInvalidRuntimeState => {
                 "replay_tlog_and_purge_invalid_runtime_state"
             }
@@ -43,6 +45,7 @@ pub enum RecoveryAction {
     SetPlannerPending,
     RetireTransport,
     RetryRole,
+    RefreshProjectionBounded,
     EscalateToDiagnostics,
     EscalateToSolo,
     Suppress,
@@ -192,6 +195,13 @@ impl Default for RecoveryConfig {
                     RecoveryPolicy::ShrinkPromptAndRetry,
                 ),
                 threshold(
+                    ErrorClass::ProjectionRefreshStalled,
+                    1,
+                    300_000,
+                    1,
+                    RecoveryPolicy::RefreshProjectionBounded,
+                ),
+                threshold(
                     ErrorClass::BlockerEscalated,
                     2,
                     300_000,
@@ -292,6 +302,10 @@ pub fn classify_route_gate_reason(reason: &str) -> Option<ErrorClass> {
     if text.contains("invalid_route") {
         return Some(ErrorClass::InvalidRoute);
     }
+    let summary_class = crate::error_class::classify_blocker_summary(&text);
+    if matches!(summary_class, ErrorClass::ProjectionRefreshStalled) {
+        return Some(summary_class);
+    }
     for class in ErrorClass::ALL {
         if reason_mentions_error_class(&text, &class) {
             return Some(class);
@@ -324,6 +338,11 @@ pub fn canonical_actions_for_policy(policy: &RecoveryPolicy) -> Vec<RecoveryActi
         RecoveryPolicy::ShrinkPromptAndRetry => {
             vec![RecoveryAction::RecordTriggeredEffect, RecoveryAction::RetryRole]
         }
+        RecoveryPolicy::RefreshProjectionBounded => vec![
+            RecoveryAction::RecordTriggeredEffect,
+            RecoveryAction::RefreshProjectionBounded,
+            RecoveryAction::RetryRole,
+        ],
         RecoveryPolicy::ReplayTlogAndPurgeInvalidRuntimeState => {
             vec![RecoveryAction::RecordTriggeredEffect, RecoveryAction::RetryRole]
         }
@@ -366,6 +385,22 @@ mod tests {
     fn missing_target_below_threshold_is_not_recovered() {
         let reason = "Action targeted a path that does not exist";
         assert!(decision_for_route_gate_block(reason, 1).is_none());
+    }
+
+    #[test]
+    fn projection_refresh_stall_selects_bounded_projection_refresh() {
+        let reason = "refresh pid is still running and latest.json remains stale";
+        let decision = decision_for_route_gate_block(reason, 1).expect("decision");
+
+        assert_eq!(decision.class, ErrorClass::ProjectionRefreshStalled);
+        assert_eq!(decision.policy, RecoveryPolicy::RefreshProjectionBounded);
+        assert_eq!(decision.threshold, 1);
+        assert!(decision
+            .canonical_actions
+            .contains(&RecoveryAction::RefreshProjectionBounded));
+        assert!(decision
+            .canonical_actions
+            .contains(&RecoveryAction::RetryRole));
     }
 
     #[test]

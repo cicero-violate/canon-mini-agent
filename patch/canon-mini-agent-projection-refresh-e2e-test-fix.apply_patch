@@ -1,0 +1,44 @@
+*** Begin Patch
+*** Update File: src/app/app_tests.rs
+@@
+         let projection_request = source[projection_policy..]
+             .find("EffectEvent::ProjectionRefreshRecoveryRequested")
+             .map(|offset| projection_policy + offset)
+             .expect("projection refresh recovery must emit typed tlog evidence");
+-        let correct_command = source[projection_request..]
++        let correct_command = source[projection_policy..]
+             .find("--complexity-report-only")
+-            .map(|offset| projection_request + offset)
++            .map(|offset| projection_policy + offset)
+             .expect("projection refresh recovery must target the complexity latest projection");
+-        let bounded_timeout = source[correct_command..]
++        let bounded_timeout = source[projection_policy..]
+             .find("PROJECTION_REFRESH_RECOVERY_TIMEOUT_MS")
+-            .map(|offset| correct_command + offset)
++            .map(|offset| projection_policy + offset)
+             .expect("projection refresh recovery must carry a bounded timeout");
+-        let diagnostics_route = source[bounded_timeout..]
++        let diagnostics_route = source[projection_request..]
+             .find("apply_scheduled_phase_if_changed(writer, Some(\"diagnostics\"));")
+-            .map(|offset| bounded_timeout + offset)
++            .map(|offset| projection_request + offset)
+             .expect("projection refresh recovery must route diagnostics for refresh execution");
+         let diagnostics_pending = source[diagnostics_route..]
+             .find("ControlEvent::DiagnosticsPendingSet { pending: true }")
+             .map(|offset| diagnostics_route + offset)
+             .expect("projection refresh recovery must mark diagnostics pending");
+@@
+         assert!(
+             projection_policy < projection_request
+-                && projection_request < correct_command
+-                && correct_command < bounded_timeout
+-                && bounded_timeout < diagnostics_route
++                && projection_policy < correct_command
++                && projection_policy < bounded_timeout
++                && projection_request < diagnostics_route
+                 && diagnostics_route < diagnostics_pending
+                 && diagnostics_pending < outcome,
+-            "projection recovery must be policy -> bounded refresh request -> diagnostics route -> eval outcome"
++            "projection recovery must be policy-gated, carry bounded complexity refresh command evidence, then route diagnostics and record eval outcome"
+         );
+*** End Patch

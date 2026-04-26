@@ -1162,6 +1162,9 @@ fn recovery_progress_event_seen(record: &crate::tlog::TlogRecord) -> bool {
             event: EffectEvent::WorkspaceArtifactWriteApplied { .. },
         } => true,
         Event::Effect {
+            event: EffectEvent::ProjectionRefreshRecoveryRequested { .. },
+        } => true,
+        Event::Effect {
             event:
                 EffectEvent::EvalScoreRecorded {
                     delta_g,
@@ -1202,6 +1205,14 @@ fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
         "llm_timeout" => text.contains("timeout"),
         "compile_error" => text.contains("cargo") || text.contains("compile"),
         "verification_failed" => text.contains("verification"),
+        "projection_refresh_stalled" => {
+            text.contains("projection refresh stalled")
+                || text.contains("projection remains stale")
+                || text.contains("stale latest.json")
+                || text.contains("latest.json remains stale")
+                || text.contains("long-running regeneration")
+                || text.contains("refresh pid")
+        }
         "invalid_schema" => text.contains("schema"),
         "step_limit_exceeded" => text.contains("step limit") || text.contains("step budget"),
         "checkpoint_runtime_divergence" => text.contains("checkpoint"),
@@ -2215,6 +2226,44 @@ mod tests {
         assert_eq!(signals.recovery_successes, 0);
         assert_eq!(signals.recovery_failures, 1);
         assert_eq!(signals.recovery_effectiveness_score, 0.0);
+    }
+
+    #[test]
+    fn projection_refresh_request_counts_as_recovery_progress() {
+        let records = vec![
+            crate::tlog::TlogRecord {
+                seq: 1,
+                ts_ms: 1,
+                event: Event::effect(EffectEvent::RecoveryTriggered {
+                    generated_at_ms: 1,
+                    class: "projection_refresh_stalled".to_string(),
+                    policy: "refresh_projection_bounded".to_string(),
+                    reason: "refresh pid is still running and latest.json remains stale".to_string(),
+                    support_count: 1,
+                    threshold: 1,
+                    window_ms: 300_000,
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 2,
+                ts_ms: 2,
+                event: Event::effect(EffectEvent::ProjectionRefreshRecoveryRequested {
+                    generated_at_ms: 2,
+                    class: "projection_refresh_stalled".to_string(),
+                    policy: "refresh_projection_bounded".to_string(),
+                    projection: "agent_state/reports/complexity/latest.json".to_string(),
+                    command: "timeout 30s cargo run -p canon-mini-agent --bin canon-generate-issues -- --workspace /tmp/ws --complexity-report-only".to_string(),
+                    timeout_ms: 30_000,
+                    reason: "refresh pid is still running and latest.json remains stale".to_string(),
+                }),
+            },
+        ];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.recovery_attempts, 1);
+        assert_eq!(signals.recovery_successes, 1);
+        assert_eq!(signals.recovery_failures, 0);
+        assert_eq!(signals.recovery_effectiveness_score, 1.0);
     }
 
     #[test]

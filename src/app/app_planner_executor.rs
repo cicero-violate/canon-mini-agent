@@ -791,7 +791,7 @@ pub(super) fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::pat
             record_recovery_suppressed(writer, &decision, attempt_count);
             apply_suppressed_route_gate_terminal_cleanup(writer, &decision);
         } else {
-            apply_recovery_decision(writer, &decision);
+            apply_recovery_decision(writer, ws, &decision);
         }
     }
     if !writer.state().planner_pending {
@@ -961,13 +961,27 @@ pub(super) fn annotate_route_gate_recovery_payload(
 
 pub(super) fn apply_recovery_decision(
     writer: &mut CanonicalWriter,
+    ws: &std::path::Path,
     decision: &crate::recovery::RecoveryDecision,
 ) {
     record_recovery_triggered(writer, decision);
-    if decision.policy != crate::recovery::RecoveryPolicy::ClearExecutorAndWakePlanner {
-        record_recovery_outcome(writer, decision, false, decision.support_count, false, 0);
-        return;
+    match decision.policy {
+        crate::recovery::RecoveryPolicy::ClearExecutorAndWakePlanner => {
+            apply_clear_executor_and_wake_planner_recovery(writer, decision)
+        }
+        crate::recovery::RecoveryPolicy::RefreshProjectionBounded => {
+            apply_bounded_projection_refresh_recovery(writer, ws, decision)
+        }
+        _ => {
+            record_recovery_outcome(writer, decision, false, decision.support_count, false, 0);
+        }
     }
+}
+
+fn apply_clear_executor_and_wake_planner_recovery(
+    writer: &mut CanonicalWriter,
+    decision: &crate::recovery::RecoveryDecision,
+) {
     let pending_lanes_before = claimable_executor_pending_lane_count(writer);
     let executor_wake_before = writer.state().wake_signals_pending.contains_key("executor");
     let scheduled_phase_before = writer.state().scheduled_phase.clone();
@@ -1027,6 +1041,67 @@ pub(super) fn apply_recovery_decision(
         decision.policy.as_key(),
         decision.support_count,
         lane_ids
+    );
+}
+
+const PROJECTION_REFRESH_RECOVERY_TIMEOUT_MS: u64 = 30_000;
+
+fn projection_refresh_recovery_command(ws: &std::path::Path) -> String {
+    format!(
+        "timeout 30s cargo run -p canon-mini-agent --bin canon-generate-issues -- --workspace {} --complexity-report-only",
+        ws.display()
+    )
+}
+
+fn apply_bounded_projection_refresh_recovery(
+    writer: &mut CanonicalWriter,
+    ws: &std::path::Path,
+    decision: &crate::recovery::RecoveryDecision,
+) {
+    let diagnostics_pending_before = writer.state().diagnostics_pending;
+    let scheduled_phase_before = writer.state().scheduled_phase.clone();
+    let planner_pending_before = writer.state().planner_pending;
+    let command = projection_refresh_recovery_command(ws);
+    writer.record_effect(crate::events::EffectEvent::ProjectionRefreshRecoveryRequested {
+        generated_at_ms: crate::logging::now_ms(),
+        class: decision.class.as_key().to_string(),
+        policy: decision.policy.as_key().to_string(),
+        projection: "agent_state/reports/complexity/latest.json".to_string(),
+        command,
+        timeout_ms: PROJECTION_REFRESH_RECOVERY_TIMEOUT_MS,
+        reason: decision.reason.clone(),
+    });
+    apply_scheduled_phase_if_changed(writer, Some("diagnostics"));
+    if !writer.state().diagnostics_pending {
+        writer.apply(ControlEvent::DiagnosticsPendingSet { pending: true });
+    }
+    if !writer.state().planner_pending {
+        writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+    }
+
+    let routed_to_diagnostics = writer.state().scheduled_phase.as_deref() == Some("diagnostics");
+    let diagnostics_pending_after = writer.state().diagnostics_pending;
+    let planner_pending_after = writer.state().planner_pending;
+    let state_delta_count = usize::from(scheduled_phase_before.as_deref() != Some("diagnostics") && routed_to_diagnostics)
+        + usize::from(!diagnostics_pending_before && diagnostics_pending_after)
+        + usize::from(!planner_pending_before && planner_pending_after);
+    let state_delta_seen = state_delta_count > 0;
+    let final_state_repaired = routed_to_diagnostics && diagnostics_pending_after && planner_pending_after;
+    let success = state_delta_seen && final_state_repaired;
+    record_recovery_outcome(
+        writer,
+        decision,
+        success,
+        if success { 0 } else { decision.support_count },
+        state_delta_seen,
+        state_delta_count,
+    );
+    eprintln!(
+        "[route_recovery] class={} policy={} projection=agent_state/reports/complexity/latest.json bounded_refresh_requested diagnostics_pending={} success={}",
+        decision.class.as_key(),
+        decision.policy.as_key(),
+        diagnostics_pending_after,
+        success
     );
 }
 

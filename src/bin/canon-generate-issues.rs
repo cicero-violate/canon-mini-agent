@@ -31,7 +31,15 @@ fn pass_unit_result(result: Result<()>) -> Result<()> {
     result
 }
 
+fn require_generated_path(result: Result<Option<PathBuf>>) -> Result<PathBuf> {
+    result.and_then(|path| path.context("complexity report skipped because no semantic crates exist"))
+}
+
 const GRAPH_REPORT_MODES: &[(&str, fn(&Path) -> Result<PathBuf>)] = &[
+    (
+        "--complexity-report-only",
+        |workspace| require_generated_path(canon_mini_agent::complexity::write_complexity_report(workspace)),
+    ),
     (
         "--graph-complexity-only",
         canon_mini_agent::complexity::write_graph_only_complexity_report,
@@ -149,6 +157,10 @@ fn run_selected_mode_or_refresh(args: &[String], workspace: &PathBuf) -> Result<
     if let Some(result) = run_selected_mode(args, workspace) {
         result
     } else {
+        // Default mode refreshes ISSUES.json and related issue projections only.
+        // Use --complexity-report-only when the desired artifact is
+        // agent_state/reports/complexity/latest.json; otherwise callers can wait
+        // on the wrong projection and report a false stale latest.json blocker.
         canon_mini_agent::complexity::refresh_issue_artifacts(workspace)
     }
 }
