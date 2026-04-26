@@ -1,0 +1,501 @@
+*** Begin Patch
+*** Update File: src/events.rs
+@@
+     WorkspaceArtifactWriteRequested {
+         #[serde(default)]
+         artifact_id: String,
++        #[serde(default)]
++        source_event_seq: u64,
++        #[serde(default)]
++        producer_action: String,
++        #[serde(default)]
++        repair_plan_id: String,
++        #[serde(default)]
++        plan_task_id: String,
++        #[serde(default)]
++        eval_outcome: String,
+         artifact: String,
+         op: String,
+         target: String,
+         subject: String,
+         signature: String,
+@@
+     WorkspaceArtifactWriteApplied {
+         #[serde(default)]
+         artifact_id: String,
++        #[serde(default)]
++        source_event_seq: u64,
++        #[serde(default)]
++        producer_action: String,
++        #[serde(default)]
++        repair_plan_id: String,
++        #[serde(default)]
++        plan_task_id: String,
++        #[serde(default)]
++        eval_outcome: String,
+         artifact: String,
+         op: String,
+         target: String,
+         subject: String,
+         signature: String,
+*** Update File: src/logging.rs
+@@
+ pub fn workspace_artifact_id(
+     kind: &str,
+     target: &str,
+     subject: &str,
+     content_hash: &str,
+ ) -> String {
+@@
+     format!("artifact-{:016x}", hasher.finish())
+ }
+
++pub fn artifact_lineage_eval_outcome(requested: bool) -> &'static str {
++    if requested {
++        "requested"
++    } else {
++        "applied_pending_eval"
++    }
++}
++
+ fn record_workspace_artifact_effect_with_id(
+     workspace: &std::path::Path,
+     requested: bool,
+     artifact_id: &str,
+     artifact: &str,
+@@
+         crate::tlog::Tlog::open(&tlog_path),
+         workspace.to_path_buf(),
+     )?;
++    let source_event_seq = writer.tlog_seq().saturating_add(1);
++    let producer_action = op.to_string();
++    let eval_outcome = artifact_lineage_eval_outcome(requested).to_string();
+     let effect = if requested {
+         crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
+             artifact_id: artifact_id.to_string(),
++            source_event_seq,
++            producer_action,
++            repair_plan_id: String::new(),
++            plan_task_id: String::new(),
++            eval_outcome,
+             artifact: artifact.to_string(),
+             op: op.to_string(),
+             target: target.to_string(),
+             subject: subject.to_string(),
+             signature: signature.to_string(),
+         }
+     } else {
+         crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
+             artifact_id: artifact_id.to_string(),
++            source_event_seq,
++            producer_action,
++            repair_plan_id: String::new(),
++            plan_task_id: String::new(),
++            eval_outcome,
+             artifact: artifact.to_string(),
+             op: op.to_string(),
+             target: target.to_string(),
+             subject: subject.to_string(),
+             signature: signature.to_string(),
+@@
+         let tlog_raw = fs::read_to_string(workspace.join("agent_state").join("tlog.ndjson"))
+             .expect("read tlog");
+         let mut artifact_ids = Vec::new();
++        let mut lineage_ok = 0usize;
+         for line in tlog_raw.lines() {
+             let record: Value = serde_json::from_str(line).expect("parse tlog record");
+             let Some(event) = record.get("event").and_then(|v| v.get("event")) else {
+                 continue;
+             };
+@@
+                         .expect("artifact_id")
+                         .to_string(),
+                 );
++                assert!(
++                    event
++                        .get("source_event_seq")
++                        .and_then(|v| v.as_u64())
++                        .unwrap_or_default()
++                        > 0,
++                    "artifact lineage must include source_event_seq"
++                );
++                assert_eq!(
++                    event.get("producer_action").and_then(|v| v.as_str()),
++                    Some("write")
++                );
++                assert!(
++                    event.get("eval_outcome").and_then(|v| v.as_str()).is_some(),
++                    "artifact lineage must include eval_outcome"
++                );
++                lineage_ok += 1;
+             }
+         }
+
+         assert_eq!(artifact_ids, vec![expected_id.clone(), expected_id]);
++        assert_eq!(lineage_ok, 2);
+     }
+*** Update File: src/tools_foundation.rs
+@@
+ ) -> Result<()> {
+     let artifact_id = crate::logging::workspace_artifact_id(artifact, target, subject, signature);
++    let source_event_seq = writer.tlog_seq().saturating_add(1);
++    let producer_action = op.to_string();
++    let eval_outcome = crate::logging::artifact_lineage_eval_outcome(requested).to_string();
+     let effect = if requested {
+         crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
+             artifact_id: artifact_id.clone(),
++            source_event_seq,
++            producer_action,
++            repair_plan_id: String::new(),
++            plan_task_id: String::new(),
++            eval_outcome,
+             artifact: artifact.to_string(),
+             op: op.to_string(),
+             target: target.to_string(),
+             subject: subject.to_string(),
+             signature: signature.to_string(),
+         }
+     } else {
+         crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
+             artifact_id,
++            source_event_seq,
++            producer_action,
++            repair_plan_id: String::new(),
++            plan_task_id: String::new(),
++            eval_outcome,
+             artifact: artifact.to_string(),
+             op: op.to_string(),
+             target: target.to_string(),
+             subject: subject.to_string(),
+             signature: signature.to_string(),
+*** Update File: src/evaluation.rs
+@@
+     if input.tlog_delta_signals.regressed_improvement_attempts > 0 {
+         warnings.push(format!(
+             "regressed_improvement_attempts={}/{}",
+             input.tlog_delta_signals.regressed_improvement_attempts,
+             input.tlog_delta_signals.measured_improvement_attempts
+         ));
+     }
++    if input.tlog_delta_signals.artifact_lineage_orphans > 0 {
++        warnings.push(format!(
++            "artifact_lineage_orphans={}/{} ids={}",
++            input.tlog_delta_signals.artifact_lineage_orphans,
++            input
++                .tlog_delta_signals
++                .artifact_lineage_complete
++                .saturating_add(input.tlog_delta_signals.artifact_lineage_orphans),
++            input.tlog_delta_signals.orphan_artifact_ids.join(",")
++        ));
++    }
+ }
+@@
+     pub artifact_write_requests: usize,
+     pub artifact_write_applies: usize,
+     pub unapplied_artifact_writes: usize,
++    pub artifact_lineage_complete: usize,
++    pub artifact_lineage_orphans: usize,
++    pub orphan_artifact_ids: Vec<String>,
+     pub git_checkpoint_blocked: usize,
+@@
+-            Event::Effect {
+-                event: EffectEvent::WorkspaceArtifactWriteRequested { signature, .. },
+-            } => {
++            Event::Effect {
++                event:
++                    EffectEvent::WorkspaceArtifactWriteRequested {
++                        artifact_id,
++                        source_event_seq,
++                        producer_action,
++                        target,
++                        eval_outcome,
++                        signature,
++                        ..
++                    },
++            } => {
+                 signals.artifact_write_requests += 1;
++                record_artifact_lineage(
++                    &mut signals,
++                    artifact_id,
++                    *source_event_seq,
++                    producer_action,
++                    target,
++                    eval_outcome,
++                );
+                 requested_artifact_signatures.insert(signature.clone());
+             }
+             Event::Effect {
+-                event: EffectEvent::WorkspaceArtifactWriteApplied { signature, .. },
+-            } => {
++                event:
++                    EffectEvent::WorkspaceArtifactWriteApplied {
++                        artifact_id,
++                        source_event_seq,
++                        producer_action,
++                        target,
++                        eval_outcome,
++                        signature,
++                        ..
++                    },
++            } => {
+                 signals.artifact_write_applies += 1;
++                record_artifact_lineage(
++                    &mut signals,
++                    artifact_id,
++                    *source_event_seq,
++                    producer_action,
++                    target,
++                    eval_outcome,
++                );
+                 applied_artifact_signatures.insert(signature.clone());
+             }
+@@
+ fn canonical_artifact_score(signals: &TlogDeltaSignals) -> f64 {
+-    if signals.artifact_write_requests == 0 {
+-        1.0
+-    } else {
+-        1.0 - safe_ratio(
+-            signals.unapplied_artifact_writes as f64,
+-            signals.artifact_write_requests as f64,
+-        )
+-    }
++    let request_score = if signals.artifact_write_requests == 0 {
++        1.0
++    } else {
++        1.0 - safe_ratio(
++            signals.unapplied_artifact_writes as f64,
++            signals.artifact_write_requests as f64,
++        )
++    };
++    let lineage_total = signals
++        .artifact_lineage_complete
++        .saturating_add(signals.artifact_lineage_orphans);
++    let lineage_score = if lineage_total == 0 {
++        1.0
++    } else {
++        1.0 - safe_ratio(signals.artifact_lineage_orphans as f64, lineage_total as f64)
++    };
++    geometric_score(&[request_score, lineage_score])
+ }
++
++fn artifact_lineage_is_complete(
++    artifact_id: &str,
++    source_event_seq: u64,
++    producer_action: &str,
++    target: &str,
++    eval_outcome: &str,
++) -> bool {
++    !artifact_id.trim().is_empty()
++        && source_event_seq > 0
++        && !producer_action.trim().is_empty()
++        && !target.trim().is_empty()
++        && !eval_outcome.trim().is_empty()
++}
++
++fn record_artifact_lineage(
++    signals: &mut TlogDeltaSignals,
++    artifact_id: &str,
++    source_event_seq: u64,
++    producer_action: &str,
++    target: &str,
++    eval_outcome: &str,
++) {
++    if artifact_lineage_is_complete(
++        artifact_id,
++        source_event_seq,
++        producer_action,
++        target,
++        eval_outcome,
++    ) {
++        signals.artifact_lineage_complete = signals.artifact_lineage_complete.saturating_add(1);
++        return;
++    }
++    signals.artifact_lineage_orphans = signals.artifact_lineage_orphans.saturating_add(1);
++    if signals.orphan_artifact_ids.len() < 8 {
++        let id = if artifact_id.trim().is_empty() {
++            "(missing_artifact_id)"
++        } else {
++            artifact_id
++        };
++        signals.orphan_artifact_ids.push(id.to_string());
++    }
++}
+@@
+     fn tlog_delta_invariants_reward_closed_action_delta() {
+         let records = vec![
+@@
+         assert_eq!(signals.score, 1.0);
+     }
++
++    #[test]
++    fn tlog_delta_invariants_warn_on_orphan_artifact_lineage() {
++        let records = vec![crate::tlog::TlogRecord {
++            seq: 1,
++            ts_ms: 1,
++            event: Event::effect(EffectEvent::WorkspaceArtifactWriteApplied {
++                artifact_id: String::new(),
++                source_event_seq: 0,
++                producer_action: String::new(),
++                repair_plan_id: String::new(),
++                plan_task_id: String::new(),
++                eval_outcome: String::new(),
++                artifact: "agent_state/example.json".to_string(),
++                op: "write".to_string(),
++                target: "agent_state/example.json".to_string(),
++                subject: "example".to_string(),
++                signature: "sig".to_string(),
++            }),
++        }];
++
++        let signals = evaluate_tlog_delta_invariants(&records);
++
++        assert_eq!(signals.artifact_lineage_orphans, 1);
++        assert_eq!(signals.artifact_lineage_complete, 0);
++        assert!(signals.orphan_artifact_ids.contains(&"(missing_artifact_id)".to_string()));
++        assert!(canonical_artifact_score(&signals) < 1.0);
++    }
++
++    #[test]
++    fn tlog_delta_invariants_accept_complete_artifact_lineage() {
++        let records = vec![crate::tlog::TlogRecord {
++            seq: 2,
++            ts_ms: 2,
++            event: Event::effect(EffectEvent::WorkspaceArtifactWriteApplied {
++                artifact_id: "artifact-abc".to_string(),
++                source_event_seq: 1,
++                producer_action: "write".to_string(),
++                repair_plan_id: String::new(),
++                plan_task_id: String::new(),
++                eval_outcome: "applied_pending_eval".to_string(),
++                artifact: "agent_state/example.json".to_string(),
++                op: "write".to_string(),
++                target: "agent_state/example.json".to_string(),
++                subject: "example".to_string(),
++                signature: "sig".to_string(),
++            }),
++        }];
++
++        let signals = evaluate_tlog_delta_invariants(&records);
++
++        assert_eq!(signals.artifact_lineage_complete, 1);
++        assert_eq!(signals.artifact_lineage_orphans, 0);
++        assert_eq!(canonical_artifact_score(&signals), 1.0);
++    }
+
+     #[test]
+     fn tlog_delta_invariants_identifies_projection_as_actionable_lag() {
+*** Update File: src/complexity.rs
+@@
+     eval_report.insert(
+         "restart_requests_without_child_start".into(),
+         json!(eval.tlog_delta_signals.restart_requests_without_child_start),
+     );
++    eval_report.insert(
++        "artifact_lineage_complete".into(),
++        json!(eval.tlog_delta_signals.artifact_lineage_complete),
++    );
++    eval_report.insert(
++        "artifact_lineage_orphans".into(),
++        json!(eval.tlog_delta_signals.artifact_lineage_orphans),
++    );
++    eval_report.insert(
++        "orphan_artifact_ids".into(),
++        json!(&eval.tlog_delta_signals.orphan_artifact_ids),
++    );
+     eval_report.insert("objectives".into(), json!(objectives_progress));
+     eval_report.insert("tasks".into(), json!(tasks_progress));
+*** Update File: src/prompt_inputs.rs
+@@
+ blocker_coverage={blocker_class_coverage:.3}  blocker_classes={blocker_distinct}  top_uncovered={blocker_top_uncovered}\n\
++artifact_lineage=complete:{artifact_lineage_complete} orphan:{artifact_lineage_orphans} ids={orphan_artifact_ids}\n\
+ lag_action={lag_kind}({lag_ms}ms)  payload={payload_kind}({payload_bytes}B)  \
+ plan_payload={plan_payload_bytes}B  measured_improvements={measured}/{attempts}  \
+ unmeasured={unmeasured}  validated_improvements={validated}/{attempts}  \
+@@
+         blocker_class_coverage = get_f64_or("blocker_class_coverage", 1.0),
+         blocker_distinct = get_u64("blocker_distinct_classes"),
+         blocker_top_uncovered = get_str("blocker_top_uncovered"),
++        artifact_lineage_complete = get_u64("artifact_lineage_complete"),
++        artifact_lineage_orphans = get_u64("artifact_lineage_orphans"),
++        orphan_artifact_ids = eval
++            .get("orphan_artifact_ids")
++            .and_then(|v| v.as_array())
++            .map(|items| {
++                items
++                    .iter()
++                    .filter_map(|item| item.as_str())
++                    .take(5)
++                    .collect::<Vec<_>>()
++                    .join(",")
++            })
++            .unwrap_or_default(),
+         semantic_contract = semantic.semantic_contract,
+*** Update File: src/prompts.rs
+@@
+ S = project(T)\n\
+ E = score(S, I, graph, issues, objectives, deltas)\n\
+ P = plan(E)\n\
+ X = execute(P)\n\
+ V = verify(X)\n\
++L_artifact = artifact_id → source_event_seq → producer_action → target_file → repair_plan_id? → plan_task_id? → eval_outcome\n\
+ G_eval = regenerate(agent_state/reports/complexity/latest.json) with `canon-generate-issues --complexity-report-only` after apply_patch_ok ∧ cargo_check_ok\n\
+ G_issue = regenerate(graph, issues) after semantic sync; do not wait on it to prove eval latest.json freshness\n\
+ T' = append(T, effects(X, V, G_eval, G_issue))\n\
+@@
+          - Every `plan`, `objectives`, and terminal `message` rationale must name the artifact evidence, \
+          the weakest eval dimension or eval_gate violation, and the delta it revealed.\n\
++         - Artifact lineage contract: every `artifact_id` in tlog must link \
++         `source_event_seq`, `producer_action`, target file, optional `repair_plan_id`, optional \
++         `plan_task_id`, and eval/preflight outcome. Orphan artifact ids are eval warnings/failures.\n\
+          - If required artifacts are missing, stale, or contradictory, create repair work for \
+          projection/logging/prompt generation before generic implementation work."
+@@
+      - Do not replace a repair plan with heuristic-equivalent wording; missing or \
+      mismatched bindings are planner repair drift and fail plan preflight/eval.\n\
++     - If the repair writes artifacts, preserve artifact lineage: `artifact_id`, \
++     `source_event_seq`, `producer_action`, target file, optional `repair_plan_id`, \
++     optional `plan_task_id`, and eval/preflight outcome.\n\
+      - Keep the binding open until machine_verify/plan_verify passes, then close the \
+      corresponding PLAN task or objective."
+ }
+@@
+     fn planner_prompts_include_active_repair_plan_contract() {
+         let system = system_instructions(AgentPromptKind::Planner);
+@@
+         }
+     }
++
++    #[test]
++    fn planner_prompts_include_artifact_lineage_contract() {
++        let system = system_instructions(AgentPromptKind::Planner);
++        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
++        let single = single_role_planner_prompt(
++            "{spec}",
++            "{objectives}",
++            "{lessons}",
++            "{enforced_invariants}",
++            "{semantic_control}",
++            "{cargo_test_failures}",
++        );
++
++        for prompt in [&system, &cycle, &single] {
++            assert!(
++                prompt.contains("artifact_id")
++                    && prompt.contains("source_event_seq")
++                    && prompt.contains("producer_action")
++                    && prompt.contains("eval/preflight outcome"),
++                "planner prompts must expose the artifact lineage contract"
++            );
++        }
++    }
+
+     #[test]
+     fn planner_and_executor_prompts_include_canonical_pipeline_contract() {
+*** Update File: src/tool_schema.rs
+@@
+             "Use `add_edge` / `remove_edge` for DAG edges; do not emit `create_edge`.".to_string(),
+             "Mutating plan ops require a non-empty `question` field.".to_string(),
+             "For active REPAIR_PLAN work, copy exact `repair_plan_id`, `required_mutation`, and `target_files` into the task or updates payload; heuristic-equivalent wording fails plan preflight/eval.".to_string(),
++            "When a task creates or refreshes artifacts, name the expected artifact lineage: artifact_id/source_event_seq/producer_action/target_file and any repair_plan_id or plan_task_id binding.".to_string(),
+         ],
+*** End Patch

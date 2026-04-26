@@ -534,6 +534,7 @@ semantic_low_confidence={semantic_fn_low_confidence}({semantic_fn_low_confidence
 eval_gate={eval_gate}  violations={eval_violations}  warnings={eval_warnings}  \
 prompt_truncations={prompt_truncations}  truncation_dropped={truncation_dropped}B  \
 blocker_coverage={blocker_class_coverage:.3}  blocker_classes={blocker_distinct}  top_uncovered={blocker_top_uncovered}\n\
+artifact_lineage=complete:{artifact_lineage_complete} orphan:{artifact_lineage_orphans} ids={orphan_artifact_ids}\n\
 lag_action={lag_kind}({lag_ms}ms)  payload={payload_kind}({payload_bytes}B)  \
 plan_payload={plan_payload_bytes}B  measured_improvements={measured}/{attempts}  \
 unmeasured={unmeasured}  validated_improvements={validated}/{attempts}  \
@@ -566,6 +567,20 @@ recovery_suppressed={recovery_suppressed}\n\
         blocker_class_coverage = get_f64_or("blocker_class_coverage", 1.0),
         blocker_distinct = get_u64("blocker_distinct_classes"),
         blocker_top_uncovered = get_str("blocker_top_uncovered"),
+        artifact_lineage_complete = get_u64("artifact_lineage_complete"),
+        artifact_lineage_orphans = get_u64("artifact_lineage_orphans"),
+        orphan_artifact_ids = eval
+            .get("orphan_artifact_ids")
+            .and_then(|v| v.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .take(5)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_default(),
         semantic_contract = semantic.semantic_contract,
         semantic_fn_with_any_error = semantic.fn_with_any_error,
         semantic_fn_total = semantic.fn_total,

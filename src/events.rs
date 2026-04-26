@@ -311,6 +311,16 @@ pub enum EffectEvent {
     WorkspaceArtifactWriteRequested {
         #[serde(default)]
         artifact_id: String,
+        #[serde(default)]
+        source_event_seq: u64,
+        #[serde(default)]
+        producer_action: String,
+        #[serde(default)]
+        repair_plan_id: String,
+        #[serde(default)]
+        plan_task_id: String,
+        #[serde(default)]
+        eval_outcome: String,
         artifact: String,
         op: String,
         target: String,
@@ -320,6 +330,16 @@ pub enum EffectEvent {
     WorkspaceArtifactWriteApplied {
         #[serde(default)]
         artifact_id: String,
+        #[serde(default)]
+        source_event_seq: u64,
+        #[serde(default)]
+        producer_action: String,
+        #[serde(default)]
+        repair_plan_id: String,
+        #[serde(default)]
+        plan_task_id: String,
+        #[serde(default)]
+        eval_outcome: String,
         artifact: String,
         op: String,
         target: String,

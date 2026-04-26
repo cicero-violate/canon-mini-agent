@@ -557,6 +557,7 @@ E = score(S, I, graph, issues, objectives, deltas)\n\
 P = plan(E)\n\
 X = execute(P)\n\
 V = verify(X)\n\
+L_artifact = artifact_id → source_event_seq → producer_action → target_file → repair_plan_id? → plan_task_id? → eval_outcome\n\
 G_eval = regenerate(agent_state/reports/complexity/latest.json) with `canon-generate-issues --complexity-report-only` after apply_patch_ok ∧ cargo_check_ok\n\
 G_issue = regenerate(graph, issues) after semantic sync; do not wait on it to prove eval latest.json freshness\n\
 T' = append(T, effects(X, V, G_eval, G_issue))\n\
@@ -621,6 +622,9 @@ fn planner_artifact_review_protocol() -> String {
          executor diff, and latest `agent_state/llm_full/*planner*` / `*executor*` prompts when present.\n\
          - Every `plan`, `objectives`, and terminal `message` rationale must name the artifact evidence, \
          the weakest eval dimension or eval_gate violation, and the delta it revealed.\n\
+         - Artifact lineage contract: every `artifact_id` in tlog must link \
+         `source_event_seq`, `producer_action`, target file, optional `repair_plan_id`, optional \
+         `plan_task_id`, and eval/preflight outcome. Orphan artifact ids are eval warnings/failures.\n\
          - If required artifacts are missing, stale, or contradictory, create repair work for \
          projection/logging/prompt generation before generic implementation work."
     )
@@ -727,6 +731,9 @@ fn active_repair_plan_contract() -> &'static str {
      plan_mutation_template.\n\
      - Do not replace a repair plan with heuristic-equivalent wording; missing or \
      mismatched bindings are planner repair drift and fail plan preflight/eval.\n\
+     - If the repair writes artifacts, preserve artifact lineage: `artifact_id`, \
+     `source_event_seq`, `producer_action`, target file, optional `repair_plan_id`, \
+     optional `plan_task_id`, and eval/preflight outcome.\n\
      - Keep the binding open until machine_verify/plan_verify passes, then close the \
      corresponding PLAN task or objective."
 }
@@ -2388,6 +2395,30 @@ mod tests {
                     && prompt.contains("`target_files`")
                     && prompt.contains("planner repair drift"),
                 "planner prompts must expose the strict repair-plan binding contract"
+            );
+        }
+    }
+
+    #[test]
+    fn planner_prompts_include_artifact_lineage_contract() {
+        let system = system_instructions(AgentPromptKind::Planner);
+        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
+        let single = single_role_planner_prompt(
+            "{spec}",
+            "{objectives}",
+            "{lessons}",
+            "{enforced_invariants}",
+            "{semantic_control}",
+            "{cargo_test_failures}",
+        );
+
+        for prompt in [&system, &cycle, &single] {
+            assert!(
+                prompt.contains("artifact_id")
+                    && prompt.contains("source_event_seq")
+                    && prompt.contains("producer_action")
+                    && prompt.contains("eval/preflight outcome"),
+                "planner prompts must expose the artifact lineage contract"
             );
         }
     }

@@ -947,6 +947,14 @@ pub fn workspace_artifact_id(
     format!("artifact-{:016x}", hasher.finish())
 }
 
+pub fn artifact_lineage_eval_outcome(requested: bool) -> &'static str {
+    if requested {
+        "requested"
+    } else {
+        "applied_pending_eval"
+    }
+}
+
 fn record_workspace_artifact_effect_with_id(
     workspace: &std::path::Path,
     requested: bool,
@@ -964,9 +972,17 @@ fn record_workspace_artifact_effect_with_id(
         crate::tlog::Tlog::open(&tlog_path),
         workspace.to_path_buf(),
     )?;
+    let source_event_seq = writer.tlog_seq().saturating_add(1);
+    let producer_action = op.to_string();
+    let eval_outcome = artifact_lineage_eval_outcome(requested).to_string();
     let effect = if requested {
         crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
             artifact_id: artifact_id.to_string(),
+            source_event_seq,
+            producer_action,
+            repair_plan_id: String::new(),
+            plan_task_id: String::new(),
+            eval_outcome,
             artifact: artifact.to_string(),
             op: op.to_string(),
             target: target.to_string(),
@@ -976,6 +992,11 @@ fn record_workspace_artifact_effect_with_id(
     } else {
         crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
             artifact_id: artifact_id.to_string(),
+            source_event_seq,
+            producer_action,
+            repair_plan_id: String::new(),
+            plan_task_id: String::new(),
+            eval_outcome,
             artifact: artifact.to_string(),
             op: op.to_string(),
             target: target.to_string(),
@@ -1504,6 +1525,7 @@ mod tests {
         let tlog_raw = fs::read_to_string(workspace.join("agent_state").join("tlog.ndjson"))
             .expect("read tlog");
         let mut artifact_ids = Vec::new();
+        let mut lineage_ok = 0usize;
         for line in tlog_raw.lines() {
             let record: Value = serde_json::from_str(line).expect("parse tlog record");
             let Some(event) = record.get("event").and_then(|v| v.get("event")) else {
@@ -1522,10 +1544,28 @@ mod tests {
                         .expect("artifact_id")
                         .to_string(),
                 );
+                assert!(
+                    event
+                        .get("source_event_seq")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or_default()
+                        > 0,
+                    "artifact lineage must include source_event_seq"
+                );
+                assert_eq!(
+                    event.get("producer_action").and_then(|v| v.as_str()),
+                    Some("write")
+                );
+                assert!(
+                    event.get("eval_outcome").and_then(|v| v.as_str()).is_some(),
+                    "artifact lineage must include eval_outcome"
+                );
+                lineage_ok += 1;
             }
         }
 
         assert_eq!(artifact_ids, vec![expected_id.clone(), expected_id]);
+        assert_eq!(lineage_ok, 2);
     }
 
     fn ensure_test_action_log_path() -> std::path::PathBuf {

@@ -149,6 +149,7 @@ fn prompt_extra_notes(action: &str) -> Vec<String> {
             "Use `add_edge` / `remove_edge` for DAG edges; do not emit `create_edge`.".to_string(),
             "Mutating plan ops require a non-empty `question` field.".to_string(),
             "For active REPAIR_PLAN work, copy exact `repair_plan_id`, `required_mutation`, and `target_files` into the task or updates payload; heuristic-equivalent wording fails plan preflight/eval.".to_string(),
+            "When a task creates or refreshes artifacts, name the expected artifact lineage: artifact_id/source_event_seq/producer_action/target_file and any repair_plan_id or plan_task_id binding.".to_string(),
         ],
         "objectives" => vec![format!(
             "Ops: {}.",

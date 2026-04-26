@@ -41,6 +41,22 @@ fn guardrail_diff_message_envelope(
     msg_type: &str,
     status: &str,
 ) -> Value {
+    build_guardrail_message_envelope(
+        from,
+        to,
+        msg_type,
+        status,
+        guardrail_diff_message_payload(raw, from, to, msg_type, status),
+    )
+}
+
+fn build_guardrail_message_envelope(
+    from: &str,
+    to: &str,
+    msg_type: &str,
+    status: &str,
+    payload: Value,
+) -> Value {
     json!({
         "action": "message",
         "from": from,
@@ -49,7 +65,7 @@ fn guardrail_diff_message_envelope(
         "status": status,
         "observation": "Model responded with diff-only text; wrapping as message payload.",
         "rationale": "Diff output must be wrapped in a valid message action.",
-        "payload": guardrail_diff_message_payload(raw, from, to, msg_type, status)
+        "payload": payload
     })
 }
 

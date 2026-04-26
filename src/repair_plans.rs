@@ -923,31 +923,39 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     {
         let failures = get_u64("recovery_failures");
         let attempts = get_u64("recovery_attempts");
-        plan!(
-            metric: "recovery_effectiveness",
-            target: 1.0,
-            score_key: "recovery_effectiveness",
-            score_default: 1.0,
-            goal: "all typed recovery attempts resolve the blocker class".to_string(),
-            trigger: format!(
-                "recovery_failures={failures}/{attempts}; some policies not resolving blocker"
-            ),
-            policy: "inspect_failed_recovery",
-            action: "inspect recovery_outcome_recorded events in tlog where success=false; \
-                patch the failing policy in src/recovery.rs".to_string(),
-            verify: "recovery_effectiveness = 1.0; recovery_failures = 0".to_string(),
-            machine_verify: VerifySpec::ScoreAbove {
-                metric: "recovery_effectiveness",
-                threshold: 1.0,
-            },
-            owner: "executor",
-            evidence: "agent_state/tlog.ndjson recovery_outcome_recorded with success=false",
+        push_recovery_effectiveness_plan(
+            &mut plans,
+            get_f64_or("recovery_effectiveness", 1.0),
+            failures,
+            attempts,
         );
     }
 
     sort_repair_plans_by_priority_and_score(&mut plans);
     plans.truncate(max);
     plans
+}
+
+fn push_recovery_effectiveness_plan(
+    plans: &mut Vec<RepairPlan>,
+    score: f64,
+    failures: u64,
+    attempts: u64,
+) {
+    push_eval_metric_plan(
+        plans,
+        "recovery_effectiveness",
+        score,
+        1.0,
+        "all typed recovery attempts resolve the blocker class".to_string(),
+        format!("recovery_failures={failures}/{attempts}; some policies not resolving blocker"),
+        "inspect_failed_recovery",
+        "inspect recovery_outcome_recorded events in tlog where success=false; patch the failing policy in src/recovery.rs".to_string(),
+        "recovery_effectiveness = 1.0; recovery_failures = 0".to_string(),
+        VerifySpec::ScoreAbove { metric: "recovery_effectiveness", threshold: 1.0 },
+        "executor",
+        "agent_state/tlog.ndjson recovery_outcome_recorded with success=false",
+    );
 }
 
 fn eval_array_string(eval: &Map<String, Value>, key: &str) -> String {

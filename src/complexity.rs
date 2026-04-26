@@ -1703,51 +1703,7 @@ fn build_complexity_report(
     let inter_scoring = complexity_inter_scoring();
     let objectives_progress = format!("{}/{}", eval.objectives_completed, eval.objectives_total);
     let tasks_progress = format!("{}/{}", eval.completed_tasks, eval.total_tasks);
-    let mut eval_report = serde_json::Map::new();
-    eval_report.insert("overall_score".into(), json!(eval.overall_score()));
-    eval_report.insert(
-        "delta_g".into(),
-        eval_delta
-            .map(|d| json!(d.delta_g))
-            .unwrap_or(serde_json::Value::Null),
-    );
-    eval_report.insert(
-        "promotion_eligible".into(),
-        eval_delta
-            .map(|d| json!(d.promotion_eligible))
-            .unwrap_or(serde_json::Value::Null),
-    );
-    eval_report.insert(
-        "objective_progress".into(),
-        json!(eval.vector.objective_progress),
-    );
-    eval_report.insert("safety".into(), json!(eval.vector.safety));
-    eval_report.insert("task_velocity".into(), json!(eval.vector.task_velocity));
-    eval_report.insert("issue_health".into(), json!(eval.vector.issue_health));
-    eval_report.insert(
-        "semantic_contract".into(),
-        json!(eval.vector.semantic_contract),
-    );
-    eval_report.insert(
-        "structural_invariant_coverage".into(),
-        json!(eval.vector.structural_invariant_coverage),
-    );
-    eval_report.insert(
-        "improvement_measurement".into(),
-        json!(eval.vector.improvement_measurement),
-    );
-    eval_report.insert(
-        "improvement_validation".into(),
-        json!(eval.vector.improvement_validation),
-    );
-    eval_report.insert(
-        "improvement_effectiveness".into(),
-        json!(eval.vector.improvement_effectiveness),
-    );
-    eval_report.insert(
-        "recovery_effectiveness".into(),
-        json!(eval.vector.recovery_effectiveness),
-    );
+    let mut eval_report = eval_report_score_fields(eval, eval_delta);
     append_tlog_delta_eval_report_fields(eval, &mut eval_report);
     eval_report.insert(
         "graph_risk_count".into(),
@@ -1910,6 +1866,18 @@ fn build_complexity_report(
         "restart_requests_without_child_start".into(),
         json!(eval.tlog_delta_signals.restart_requests_without_child_start),
     );
+    eval_report.insert(
+        "artifact_lineage_complete".into(),
+        json!(eval.tlog_delta_signals.artifact_lineage_complete),
+    );
+    eval_report.insert(
+        "artifact_lineage_orphans".into(),
+        json!(eval.tlog_delta_signals.artifact_lineage_orphans),
+    );
+    eval_report.insert(
+        "orphan_artifact_ids".into(),
+        json!(&eval.tlog_delta_signals.orphan_artifact_ids),
+    );
     eval_report.insert("objectives".into(), json!(objectives_progress));
     eval_report.insert("tasks".into(), json!(tasks_progress));
 
@@ -1922,6 +1890,40 @@ fn build_complexity_report(
         eval_report,
         drift,
     )
+}
+
+fn eval_report_score_fields(
+    eval: &crate::evaluation::EvaluationWorkspaceSnapshot,
+    eval_delta: Option<&crate::evaluation::EvalDelta>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut eval_report = serde_json::Map::new();
+    eval_report.insert("overall_score".into(), json!(eval.overall_score()));
+    eval_report.insert(
+        "delta_g".into(),
+        eval_delta
+            .map(|d| json!(d.delta_g))
+            .unwrap_or(serde_json::Value::Null),
+    );
+    eval_report.insert(
+        "promotion_eligible".into(),
+        eval_delta
+            .map(|d| json!(d.promotion_eligible))
+            .unwrap_or(serde_json::Value::Null),
+    );
+    eval_report.insert("objective_progress".into(), json!(eval.vector.objective_progress));
+    eval_report.insert("safety".into(), json!(eval.vector.safety));
+    eval_report.insert("task_velocity".into(), json!(eval.vector.task_velocity));
+    eval_report.insert("issue_health".into(), json!(eval.vector.issue_health));
+    eval_report.insert("semantic_contract".into(), json!(eval.vector.semantic_contract));
+    eval_report.insert(
+        "structural_invariant_coverage".into(),
+        json!(eval.vector.structural_invariant_coverage),
+    );
+    eval_report.insert("improvement_measurement".into(), json!(eval.vector.improvement_measurement));
+    eval_report.insert("improvement_validation".into(), json!(eval.vector.improvement_validation));
+    eval_report.insert("improvement_effectiveness".into(), json!(eval.vector.improvement_effectiveness));
+    eval_report.insert("recovery_effectiveness".into(), json!(eval.vector.recovery_effectiveness));
+    eval_report
 }
 
 fn append_tlog_delta_eval_report_fields(

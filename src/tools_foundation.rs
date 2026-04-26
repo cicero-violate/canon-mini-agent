@@ -102,9 +102,17 @@ fn emit_workspace_artifact_effect(
     signature: &str,
 ) -> Result<()> {
     let artifact_id = crate::logging::workspace_artifact_id(artifact, target, subject, signature);
+    let source_event_seq = writer.tlog_seq().saturating_add(1);
+    let producer_action = op.to_string();
+    let eval_outcome = crate::logging::artifact_lineage_eval_outcome(requested).to_string();
     let effect = if requested {
         crate::events::EffectEvent::WorkspaceArtifactWriteRequested {
             artifact_id: artifact_id.clone(),
+            source_event_seq,
+            producer_action,
+            repair_plan_id: String::new(),
+            plan_task_id: String::new(),
+            eval_outcome,
             artifact: artifact.to_string(),
             op: op.to_string(),
             target: target.to_string(),
@@ -114,6 +122,11 @@ fn emit_workspace_artifact_effect(
     } else {
         crate::events::EffectEvent::WorkspaceArtifactWriteApplied {
             artifact_id,
+            source_event_seq,
+            producer_action,
+            repair_plan_id: String::new(),
+            plan_task_id: String::new(),
+            eval_outcome,
             artifact: artifact.to_string(),
             op: op.to_string(),
             target: target.to_string(),

@@ -380,6 +380,17 @@ fn append_eval_threshold_violations(
             input.tlog_delta_signals.measured_improvement_attempts
         ));
     }
+    if input.tlog_delta_signals.artifact_lineage_orphans > 0 {
+        warnings.push(format!(
+            "artifact_lineage_orphans={}/{} ids={}",
+            input.tlog_delta_signals.artifact_lineage_orphans,
+            input
+                .tlog_delta_signals
+                .artifact_lineage_complete
+                .saturating_add(input.tlog_delta_signals.artifact_lineage_orphans),
+            input.tlog_delta_signals.orphan_artifact_ids.join(",")
+        ));
+    }
 }
 
 fn append_eval_threshold_warnings(
@@ -617,6 +628,9 @@ pub struct TlogDeltaSignals {
     pub artifact_write_requests: usize,
     pub artifact_write_applies: usize,
     pub unapplied_artifact_writes: usize,
+    pub artifact_lineage_complete: usize,
+    pub artifact_lineage_orphans: usize,
+    pub orphan_artifact_ids: Vec<String>,
     pub git_checkpoint_blocked: usize,
     pub unsafe_checkpoint_attempts: usize,
     pub prompt_truncations: usize,
@@ -771,15 +785,49 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                     .saturating_add(*dropped_bytes as u64);
             }
             Event::Effect {
-                event: EffectEvent::WorkspaceArtifactWriteRequested { signature, .. },
+                event:
+                    EffectEvent::WorkspaceArtifactWriteRequested {
+                        artifact_id,
+                        source_event_seq,
+                        producer_action,
+                        target,
+                        eval_outcome,
+                        signature,
+                        ..
+                    },
             } => {
                 signals.artifact_write_requests += 1;
+                record_artifact_lineage(
+                    &mut signals,
+                    artifact_id,
+                    *source_event_seq,
+                    producer_action,
+                    target,
+                    eval_outcome,
+                );
                 requested_artifact_signatures.insert(signature.clone());
             }
             Event::Effect {
-                event: EffectEvent::WorkspaceArtifactWriteApplied { signature, .. },
+                event:
+                    EffectEvent::WorkspaceArtifactWriteApplied {
+                        artifact_id,
+                        source_event_seq,
+                        producer_action,
+                        target,
+                        eval_outcome,
+                        signature,
+                        ..
+                    },
             } => {
                 signals.artifact_write_applies += 1;
+                record_artifact_lineage(
+                    &mut signals,
+                    artifact_id,
+                    *source_event_seq,
+                    producer_action,
+                    target,
+                    eval_outcome,
+                );
                 applied_artifact_signatures.insert(signature.clone());
             }
             Event::Effect {
@@ -954,13 +1002,65 @@ fn canonical_action_score(signals: &TlogDeltaSignals) -> f64 {
 }
 
 fn canonical_artifact_score(signals: &TlogDeltaSignals) -> f64 {
-    if signals.artifact_write_requests == 0 {
+    let request_score = if signals.artifact_write_requests == 0 {
         1.0
     } else {
         1.0 - safe_ratio(
             signals.unapplied_artifact_writes as f64,
             signals.artifact_write_requests as f64,
         )
+    };
+    let lineage_total = signals
+        .artifact_lineage_complete
+        .saturating_add(signals.artifact_lineage_orphans);
+    let lineage_score = if lineage_total == 0 {
+        1.0
+    } else {
+        1.0 - safe_ratio(signals.artifact_lineage_orphans as f64, lineage_total as f64)
+    };
+    geometric_score(&[request_score, lineage_score])
+}
+
+fn artifact_lineage_is_complete(
+    artifact_id: &str,
+    source_event_seq: u64,
+    producer_action: &str,
+    target: &str,
+    eval_outcome: &str,
+) -> bool {
+    !artifact_id.trim().is_empty()
+        && source_event_seq > 0
+        && !producer_action.trim().is_empty()
+        && !target.trim().is_empty()
+        && !eval_outcome.trim().is_empty()
+}
+
+fn record_artifact_lineage(
+    signals: &mut TlogDeltaSignals,
+    artifact_id: &str,
+    source_event_seq: u64,
+    producer_action: &str,
+    target: &str,
+    eval_outcome: &str,
+) {
+    if artifact_lineage_is_complete(
+        artifact_id,
+        source_event_seq,
+        producer_action,
+        target,
+        eval_outcome,
+    ) {
+        signals.artifact_lineage_complete = signals.artifact_lineage_complete.saturating_add(1);
+        return;
+    }
+    signals.artifact_lineage_orphans = signals.artifact_lineage_orphans.saturating_add(1);
+    if signals.orphan_artifact_ids.len() < 8 {
+        let id = if artifact_id.trim().is_empty() {
+            "(missing_artifact_id)"
+        } else {
+            artifact_id
+        };
+        signals.orphan_artifact_ids.push(id.to_string());
     }
 }
 
@@ -1245,6 +1345,8 @@ fn recovery_same_class_failure_seen(record: &crate::tlog::TlogRecord, class: &st
     }
 }
 
+/// Intent: pure_transform
+/// Resource: recovery_reason_text
 fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
     let text = reason.to_ascii_lowercase();
     match class {
@@ -1352,16 +1454,7 @@ pub fn compute_blocker_class_coverage(
     blockers: &crate::blockers::BlockersFile,
     invariant_text: &str,
 ) -> BlockerClassCoverage {
-    use crate::error_class::ErrorClass;
-    let mut class_counts: HashMap<String, usize> = HashMap::new();
-    for b in &blockers.blockers {
-        if b.error_class == ErrorClass::Unknown {
-            continue;
-        }
-        *class_counts
-            .entry(b.error_class.as_key().to_string())
-            .or_default() += 1;
-    }
+    let class_counts = blocker_class_counts(blockers);
     if class_counts.is_empty() {
         return BlockerClassCoverage::default();
     }
@@ -1393,6 +1486,20 @@ pub fn compute_blocker_class_coverage(
         top_uncovered,
         score,
     }
+}
+
+fn blocker_class_counts(blockers: &crate::blockers::BlockersFile) -> HashMap<String, usize> {
+    use crate::error_class::ErrorClass;
+    let mut class_counts: HashMap<String, usize> = HashMap::new();
+    for b in &blockers.blockers {
+        if b.error_class == ErrorClass::Unknown {
+            continue;
+        }
+        *class_counts
+            .entry(b.error_class.as_key().to_string())
+            .or_default() += 1;
+    }
+    class_counts
 }
 
 fn load_blocker_class_coverage(workspace: &Path) -> BlockerClassCoverage {
@@ -1981,6 +2088,61 @@ mod tests {
 
         assert_eq!(signals.missing_action_results, 0);
         assert_eq!(signals.score, 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_warn_on_orphan_artifact_lineage() {
+        let records = vec![crate::tlog::TlogRecord {
+            seq: 1,
+            ts_ms: 1,
+            event: Event::effect(EffectEvent::WorkspaceArtifactWriteApplied {
+                artifact_id: String::new(),
+                source_event_seq: 0,
+                producer_action: String::new(),
+                repair_plan_id: String::new(),
+                plan_task_id: String::new(),
+                eval_outcome: String::new(),
+                artifact: "agent_state/example.json".to_string(),
+                op: "write".to_string(),
+                target: "agent_state/example.json".to_string(),
+                subject: "example".to_string(),
+                signature: "sig".to_string(),
+            }),
+        }];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+
+        assert_eq!(signals.artifact_lineage_orphans, 1);
+        assert_eq!(signals.artifact_lineage_complete, 0);
+        assert!(signals.orphan_artifact_ids.contains(&"(missing_artifact_id)".to_string()));
+        assert!(canonical_artifact_score(&signals) < 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_accept_complete_artifact_lineage() {
+        let records = vec![crate::tlog::TlogRecord {
+            seq: 2,
+            ts_ms: 2,
+            event: Event::effect(EffectEvent::WorkspaceArtifactWriteApplied {
+                artifact_id: "artifact-abc".to_string(),
+                source_event_seq: 1,
+                producer_action: "write".to_string(),
+                repair_plan_id: String::new(),
+                plan_task_id: String::new(),
+                eval_outcome: "applied_pending_eval".to_string(),
+                artifact: "agent_state/example.json".to_string(),
+                op: "write".to_string(),
+                target: "agent_state/example.json".to_string(),
+                subject: "example".to_string(),
+                signature: "sig".to_string(),
+            }),
+        }];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+
+        assert_eq!(signals.artifact_lineage_complete, 1);
+        assert_eq!(signals.artifact_lineage_orphans, 0);
+        assert_eq!(canonical_artifact_score(&signals), 1.0);
     }
 
     #[test]
