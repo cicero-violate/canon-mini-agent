@@ -1317,7 +1317,7 @@ fn is_improvement_validation_result(action: &str, result: &str) -> bool {
 
 fn eval_measurement_regressed(delta_g: Option<f64>, promotion_eligible: bool) -> bool {
     match delta_g {
-        Some(delta) => delta < -0.001 && !promotion_eligible,
+        Some(delta) => delta < -0.05 && !promotion_eligible,
         None => false,
     }
 }

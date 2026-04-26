@@ -428,9 +428,10 @@ pub(super) fn log_late_submit_ack_command_mismatch(
 ) {
     let lane_label = &ctx.lanes[lane_id].label;
     let observed = observed_command_id.unwrap_or("<missing>");
-    let message = format!(
-        "late submit ack command mismatch: lane={} expected_command_id={} observed_command_id={} (ignoring stale ack)",
-        lane_label, expected_command_id, observed
+    let message = late_submit_ack_command_mismatch_message(
+        lane_label,
+        expected_command_id,
+        observed,
     );
     log_submit_ack_event(
         message.clone(),
@@ -449,6 +450,17 @@ pub(super) fn log_late_submit_ack_command_mismatch(
         &format!("runtime-only control influence: {message}"),
         None,
     );
+}
+
+fn late_submit_ack_command_mismatch_message(
+    lane_label: &str,
+    expected_command_id: &str,
+    observed_command_id: &str,
+) -> String {
+    format!(
+        "late submit ack command mismatch: lane={} expected_command_id={} observed_command_id={} (ignoring stale ack)",
+        lane_label, expected_command_id, observed_command_id
+    )
 }
 
 pub(super) fn take_matching_timed_out_submit(

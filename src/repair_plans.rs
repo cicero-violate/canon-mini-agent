@@ -175,7 +175,15 @@ pub fn render_active_plans(plans: &[RepairPlan]) -> String {
         return String::new();
     }
     let blocks: Vec<String> = plans.iter().map(render_plan).collect();
-    format!("\n{}\n", blocks.join("\n\n"))
+    format!(
+        "\nACTIVE REPAIR PLAN CONTRACT:\n\
+        Each REPAIR_PLAN is binding. The planner must create/update an open PLAN task \
+        with exact repair_plan_id, required_mutation, and all target_files copied from \
+        the rendered plan. Heuristic-equivalent tasks do not satisfy this contract; \
+        missing or mismatched bindings fail plan preflight/eval as planner repair drift.\n\
+        {}\n",
+        blocks.join("\n\n")
+    )
 }
 
 // ── PLAN binding verifier ────────────────────────────────────────────────────
@@ -504,6 +512,55 @@ fn status_label(score: f64, target: f64) -> &'static str {
     }
 }
 
+fn push_eval_metric_plan(
+    plans: &mut Vec<RepairPlan>,
+    metric: &'static str,
+    score: f64,
+    target: f64,
+    goal: String,
+    trigger: String,
+    policy: &'static str,
+    action: String,
+    verify: String,
+    machine_verify: VerifySpec,
+    owner: &'static str,
+    evidence: &'static str,
+) {
+    let status = status_label(score, target);
+    if status == "pass" {
+        return;
+    }
+
+    let repair_plan_id = format!("eval_metric:{metric}");
+    plans.push(RepairPlan {
+        kind: "eval_metric",
+        id: repair_plan_id.clone(),
+        goal,
+        trigger,
+        policy,
+        required_mutation: policy.to_string(),
+        target_files: Vec::new(),
+        action,
+        plan_mutation_template: format!(
+            "plan(op=create_task|update_task, repair_plan_id=\"{repair_plan_id}\", \
+            required_mutation=\"{policy}\", \
+            status=\"ready\", title=\"Improve eval metric {metric}\", \
+            description=\"Execute the rendered REPAIR_PLAN action and keep \
+            this repair_plan_id bound until machine_verify passes\")"
+        ),
+        persisted_policy: format!(
+            "default_behavior: eval_metric:{metric} remains active until \
+            machine_verify passes; PLAN task must keep repair_plan_id={repair_plan_id}"
+        ),
+        verify,
+        machine_verify,
+        owner,
+        evidence,
+        priority: if status == "blocked" { 30 } else { 50 },
+        score,
+    });
+}
+
 pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<RepairPlan> {
     let get_f64 = |key: &str| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
     let get_f64_or = |key: &str, d: f64| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(d);
@@ -535,41 +592,20 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         ) => {{
             let score: f64 = get_f64_or($score_key, $score_default);
             let target: f64 = $target;
-            let status = status_label(score, target);
-            if status != "pass" {
-                plans.push(RepairPlan {
-                    kind: "eval_metric",
-                    id: concat!("eval_metric:", $metric).to_string(),
-                    goal: $goal,
-                    trigger: $trigger,
-                    policy: $policy,
-                    required_mutation: $policy.to_string(),
-                    target_files: Vec::new(),
-                    action: $action,
-                    plan_mutation_template: format!(
-                        "plan(op=create_task|update_task, repair_plan_id=\"{}\", \
-                        required_mutation=\"{}\", \
-                        status=\"ready\", title=\"Improve eval metric {}\", \
-                        description=\"Execute the rendered REPAIR_PLAN action and keep \
-                        this repair_plan_id bound until machine_verify passes\")",
-                        concat!("eval_metric:", $metric),
-                        $policy,
-                        $metric,
-                    ),
-                    persisted_policy: format!(
-                        "default_behavior: eval_metric:{} remains active until \
-                        machine_verify passes; PLAN task must keep repair_plan_id={}",
-                        $metric,
-                        concat!("eval_metric:", $metric),
-                    ),
-                    verify: $verify,
-                    machine_verify: $machine_verify,
-                    owner: $owner,
-                    evidence: $evidence,
-                    priority: if status == "blocked" { 30 } else { 50 },
-                    score,
-                });
-            }
+            push_eval_metric_plan(
+                &mut plans,
+                $metric,
+                score,
+                target,
+                $goal,
+                $trigger,
+                $policy,
+                $action,
+                $verify,
+                $machine_verify,
+                $owner,
+                $evidence,
+            );
         }};
     }
 

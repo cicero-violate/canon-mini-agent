@@ -1,0 +1,27 @@
+*** Begin Patch
+*** Update File: src/repair_plans.rs
+@@
+ pub fn render_active_plans(plans: &[RepairPlan]) -> String {
+     if plans.is_empty() {
+         return String::new();
+     }
+     let blocks: Vec<String> = plans.iter().map(render_plan).collect();
+-    format!("\n{}\n", blocks.join("\n\n"))
++    format!(
++        "\nACTIVE REPAIR PLAN CONTRACT:\n\
++        Each REPAIR_PLAN is binding. The planner must create/update an open PLAN task \
++        with exact repair_plan_id, required_mutation, and all target_files copied from \
++        the rendered plan. Heuristic-equivalent tasks do not satisfy this contract; \
++        missing or mismatched bindings fail plan preflight/eval as planner repair drift.\n\
++        {}\n",
++        blocks.join("\n\n")
++    )
+ }
+*** Update File: src/tool_schema.rs
+@@
+             ),
+             "Use `add_edge` / `remove_edge` for DAG edges; do not emit `create_edge`.".to_string(),
+             "Mutating plan ops require a non-empty `question` field.".to_string(),
++            "For active REPAIR_PLAN work, copy exact `repair_plan_id`, `required_mutation`, and `target_files` into the task or updates payload; heuristic-equivalent wording fails plan preflight/eval.".to_string(),
+         ],
+*** End Patch

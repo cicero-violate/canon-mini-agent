@@ -638,13 +638,15 @@ On every planning cycle:\n\
 1. Reconcile terminal executor handoff first: if the current ready task is complete, mark it `done` before creating new work.\n\
 2. Read the current eval header/vector from semantic control. If `eval_gate=fail`, ready work must clear the listed violation before lower-risk cleanup.\n\
 3. Otherwise, choose ready work by expected improvement to the weakest eval dimension; issue score only breaks ties inside that eval target.\n\
-4. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor. Mark tasks `ready` (not `todo`) to make them executable — the executor only picks up `ready` tasks.\n\
-5. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor, and move blocked work behind dependencies.\n\
-6. Write detailed, imperative tasks that include file paths, concrete actions (read/patch/test), expected Δeval, and validation evidence.\n\
-7. Keep the ready window executable immediately by the next execute phase in this same runtime loop.\n\n\
+4. If semantic control shows `ACTIVE REPAIR PLAN CONTRACT`, bind the active REPAIR_PLAN before generic task creation: same failure class must reuse the same `repair_plan_id`, `required_mutation`, and `target_files`.\n\
+5. Update `PLAN.json` via the `plan` action and derive the ready-work window for each executor. Mark tasks `ready` (not `todo`) to make them executable — the executor only picks up `ready` tasks.\n\
+6. Maintain a READY NOW window containing at most 1-10 executable tasks for each executor, and move blocked work behind dependencies.\n\
+7. Write detailed, imperative tasks that include file paths, concrete actions (read/patch/test), expected Δeval, and validation evidence.\n\
+8. Keep the ready window executable immediately by the next execute phase in this same runtime loop.\n\n\
 Provenance fields — include on every new task:\n\
 - `issue_refs`: array of ISSUES.json ids that motivated this task (e.g. [\"auto_mir_dup_abc123\"]). Empty array if none.\n\
-- `objective_id`: the agent_state/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.";
+- `objective_id`: the agent_state/OBJECTIVES.json objective id this task advances (e.g. \"obj_reduce_complexity\"). Omit if no clear match.\n\
+- For active REPAIR_PLAN tasks: exact `repair_plan_id`, `required_mutation`, and `target_files` copied from the rendered repair plan.";
 
 const EXECUTOR_PREFIX: &str = "━━━ TASK COMPLETION PROTOCOL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n\
 When the task is done and tests pass:\n\
@@ -710,8 +712,23 @@ fn prompt_tail(kind: AgentPromptKind) -> String {
         AgentPromptKind::Executor => {
             format!("{}\n\n{}", executor_handoff(), execution_discipline())
         }
-        AgentPromptKind::Planner => PLANNER_PROCESS.to_string(),
+        AgentPromptKind::Planner => {
+            format!("{}\n\n{}", PLANNER_PROCESS, active_repair_plan_contract())
+        }
     }
+}
+
+fn active_repair_plan_contract() -> &'static str {
+    "Active repair plan contract:\n\
+     - If semantic control shows `ACTIVE REPAIR PLAN CONTRACT` / `REPAIR_PLAN`, \
+     bind those plans before creating generic ready work.\n\
+     - Each PLAN task for an active repair must copy exact `repair_plan_id`, \
+     `required_mutation`, and `target_files` from the rendered REPAIR_PLAN or \
+     plan_mutation_template.\n\
+     - Do not replace a repair plan with heuristic-equivalent wording; missing or \
+     mismatched bindings are planner repair drift and fail plan preflight/eval.\n\
+     - Keep the binding open until machine_verify/plan_verify passes, then close the \
+     corresponding PLAN task or objective."
 }
 
 pub(crate) fn system_instructions(kind: AgentPromptKind) -> String {
@@ -758,6 +775,7 @@ pub(crate) fn planner_cycle_prompt(
     let guided_review = crate::structured_questions::guided_review_block("planner cycle boundary");
     let pipeline_contract = canonical_pipeline_prompt_block();
     let artifact_review = planner_artifact_review_protocol();
+    let repair_plan_contract = active_repair_plan_contract();
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\n\
          PLAN.json EDIT RULE: always use the `plan` action — NEVER apply_patch on {MASTER_PLAN_FILE}.\n\n\
@@ -777,6 +795,7 @@ pub(crate) fn planner_cycle_prompt(
         "\n\n\
          {pipeline_contract}\n\n\
          {artifact_review}\n\n\
+         {repair_plan_contract}\n\n\
          {guided_review}\n\n\
          ⟹ IMMEDIATE ACTION: Reconcile the inbound executor handoff against the current \
          ready window first. Then plan from eval pressure: if the semantic control eval header \
@@ -902,6 +921,7 @@ pub(crate) fn single_role_planner_prompt(
     let guided_review =
         crate::structured_questions::guided_review_block("single-role planner boundary");
     let artifact_review = planner_artifact_review_protocol();
+    let repair_plan_contract = active_repair_plan_contract();
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\nSpec: {SPEC_FILE} — use read_file to load sections as needed."
     );
@@ -914,7 +934,7 @@ pub(crate) fn single_role_planner_prompt(
     let cargo_failures_heading =
         "Latest cargo test failures (from cargo_test_failures.json)".to_string();
     let suffix = format!(
-        "\n\n{pipeline_contract}\n\n{artifact_review}\n\n{guided_review}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nPlan from eval first: clear `eval_gate=fail` violations before optional cleanup, otherwise select issues that improve the weakest eval dimension. Open issues in `{issues_file}` are candidate work only when current-source evidence supports expected Δeval; issue score is a tie-break signal inside the eval target, not the priority authority. Create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: within the eval-selected candidate set, prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nEvery ready task must include expected Δeval, the weakest eval dimension it targets, and the validation command/evidence needed after execution.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
+        "\n\n{pipeline_contract}\n\n{artifact_review}\n\n{repair_plan_contract}\n\n{guided_review}\n\nUse {INVARIANTS_FILE} when deriving plan constraints.\nRead files and search the source code before issuing plan changes.\nPlan from eval first: clear `eval_gate=fail` violations before optional cleanup, otherwise select issues that improve the weakest eval dimension. Open issues in `{issues_file}` are candidate work only when current-source evidence supports expected Δeval; issue score is a tie-break signal inside the eval target, not the priority authority. Create plan tasks that reference `issue_refs`. `{diagnostics_path}` entries with no matching {issues_file} entry are hints only.\nGraph-first rule: within the eval-selected candidate set, prioritize top-ranked items from `agent_state/safe_patch_candidates.json`, and use `agent_state/semantic_manifest_proposals.json` to keep task instructions aligned with contract metadata.\nEvery ready task must include expected Δeval, the weakest eval dimension it targets, and the validation command/evidence needed after execution.\nInvariant lifecycle rule: Promoted dynamic invariants require an `invariants` action decision: enforce if the predicate is structurally valid, collapse if the root cause is gone, or create a source patch task against `src/invariant_discovery.rs` if graph/tlog evidence shows a missing synthesis rule.\nWrite imperative, actionable instructions in {MASTER_PLAN_FILE}.\nOnly use plan diffs when available; avoid re-reading the full plan unless necessary.\nDo not use internal tools.\nDo not hand off work; keep planning and execution in the current role flow.\nWhen a `plan` action is derived from projected diagnostics state, include same-cycle source validation in `observation` and `rationale` before mutating {MASTER_PLAN_FILE}.\n\nTreat stale or already-resolved projected diagnostics as non-actionable until current source evidence reconfirms them.\nIf projected diagnostics repeatedly report stale issues, create follow-up work to repair projection generation rather than reopening resolved implementation tasks."
     );
     let items = [
         PromptItem {
@@ -2343,6 +2363,31 @@ mod tests {
             assert!(
                 prompt.contains("issue score") || prompt.contains("issue scores"),
                 "planner prompts must demote issue score to a candidate or tie-break signal"
+            );
+        }
+    }
+
+    #[test]
+    fn planner_prompts_include_active_repair_plan_contract() {
+        let system = system_instructions(AgentPromptKind::Planner);
+        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
+        let single = single_role_planner_prompt(
+            "{spec}",
+            "{objectives}",
+            "{lessons}",
+            "{enforced_invariants}",
+            "{semantic_control}",
+            "{cargo_test_failures}",
+        );
+
+        for prompt in [&system, &cycle, &single] {
+            assert!(
+                prompt.contains("Active repair plan contract:")
+                    && prompt.contains("`repair_plan_id`")
+                    && prompt.contains("`required_mutation`")
+                    && prompt.contains("`target_files`")
+                    && prompt.contains("planner repair drift"),
+                "planner prompts must expose the strict repair-plan binding contract"
             );
         }
     }
