@@ -677,7 +677,11 @@ pub(super) fn route_gate_block_record(reason: &str) -> serde_json::Value {
 /// Provenance: rustc:facts + rustc:docstring
 pub(super) fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::path::Path, reason: &str) {
     eprintln!("[invariant_gate] route G_r (BLOCKED): {reason}");
-    let blocker_message = route_gate_blocker_message(reason);
+    writer.record_violation("executor", reason);
+    let recovery_decision = route_gate_recovery_decision(ws, reason);
+    let recovery_count = recovery_decision.as_ref().map(|decision| decision.support_count);
+    let mut blocker_message = route_gate_blocker_message(reason);
+    annotate_route_gate_recovery_payload(&mut blocker_message, recovery_count);
     if persist_planner_blocker_message(writer, &blocker_message) {
         let record = route_gate_block_record(reason);
         crate::blockers::record_action_failure_with_writer(
@@ -690,5 +694,122 @@ pub(super) fn apply_route_gate_block(writer: &mut CanonicalWriter, ws: &std::pat
         );
         let _ = crate::logging::append_action_log_record(&record);
     }
+    if let Some(decision) = recovery_decision {
+        apply_recovery_decision(writer, &decision);
+    }
     writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+}
+
+const ROUTE_GATE_RECOVERY_TLOG_RECORDS: usize = 128;
+
+pub(super) fn route_gate_recovery_decision(
+    ws: &std::path::Path,
+    reason: &str,
+) -> Option<crate::recovery::RecoveryDecision> {
+    let count = recent_same_route_gate_violation_count(ws, reason);
+    crate::recovery::decision_for_route_gate_block(reason, count)
+}
+
+pub(super) fn recent_same_route_gate_violation_count(
+    ws: &std::path::Path,
+    reason: &str,
+) -> usize {
+    let tlog_path = ws.join("agent_state").join("tlog.ndjson");
+    crate::tlog::Tlog::read_recent_records(&tlog_path, ROUTE_GATE_RECOVERY_TLOG_RECORDS)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|record| match &record.event {
+            crate::events::Event::Effect {
+                event:
+                    crate::events::EffectEvent::InvariantViolation {
+                        proposed_role,
+                        reason: recorded_reason,
+                    },
+            } => proposed_role.as_str() == "executor" && recorded_reason.as_str() == reason,
+            _ => false,
+        })
+        .count()
+}
+
+pub(super) fn annotate_route_gate_recovery_payload(
+    message: &mut serde_json::Value,
+    recovery_count: Option<usize>,
+) {
+    let Some(count) = recovery_count else {
+        return;
+    };
+    let Some(payload) = message.get_mut("payload").and_then(serde_json::Value::as_object_mut)
+    else {
+        return;
+    };
+    let evidence = payload
+        .get("evidence")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    payload.insert(
+        "evidence".to_string(),
+        serde_json::Value::String(format!(
+            "{evidence}\nrecovery_trigger=tlog.repeated_invariant_violation recent_same_reason_count={count}"
+        )),
+    );
+    payload.insert(
+        "recovery".to_string(),
+        serde_json::json!({
+            "source": "tlog.ndjson",
+            "trigger": "repeated_invariant_violation",
+            "recent_same_reason_count": count,
+            "action": "clear_executor_wake_and_pending_lanes_then_route_planner"
+        }),
+    );
+}
+
+pub(super) fn apply_recovery_decision(
+    writer: &mut CanonicalWriter,
+    decision: &crate::recovery::RecoveryDecision,
+) {
+    writer.record_effect(crate::events::EffectEvent::RecoveryTriggered {
+        generated_at_ms: crate::logging::now_ms(),
+        class: decision.class.as_key().to_string(),
+        policy: decision.policy.as_key().to_string(),
+        reason: decision.reason.clone(),
+        support_count: decision.support_count,
+        threshold: decision.threshold,
+        window_ms: decision.window_ms,
+    });
+    if decision.policy != crate::recovery::RecoveryPolicy::ClearExecutorAndWakePlanner {
+        return;
+    }
+    let lane_ids = writer
+        .state()
+        .lanes
+        .iter()
+        .filter_map(|(lane_id, lane)| {
+            if lane.pending && lane.in_progress_by.is_none() {
+                Some(*lane_id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    for lane_id in &lane_ids {
+        writer.apply(ControlEvent::LanePendingSet {
+            lane_id: *lane_id,
+            pending: false,
+        });
+    }
+    if let Some((_, signature)) = writer.state().wake_signals_pending.get("executor").cloned() {
+        writer.apply(ControlEvent::WakeSignalConsumed {
+            role: "executor".to_string(),
+            signature,
+        });
+    }
+    apply_scheduled_phase_if_changed(writer, Some("planner"));
+    eprintln!(
+        "[route_recovery] class={} policy={} repeated={} cleared_lanes={:?} rerouted=planner",
+        decision.class.as_key(),
+        decision.policy.as_key(),
+        decision.support_count,
+        lane_ids
+    );
 }

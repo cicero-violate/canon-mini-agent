@@ -63,6 +63,7 @@ pub fn run(
         improvement_measurement: snapshot.vector.improvement_measurement,
         improvement_validation: snapshot.vector.improvement_validation,
         improvement_effectiveness: snapshot.vector.improvement_effectiveness,
+        recovery_effectiveness: snapshot.vector.recovery_effectiveness,
         improvement_attempts: snapshot.tlog_delta_signals.improvement_attempts,
         measured_improvement_attempts: snapshot
             .tlog_delta_signals
@@ -84,6 +85,13 @@ pub fn run(
             .regressed_improvement_attempts,
         eval_measurement_points: snapshot.tlog_delta_signals.eval_measurement_points,
         measurement_regressions: snapshot.tlog_delta_signals.measurement_regressions,
+        recovery_attempts: snapshot.tlog_delta_signals.recovery_attempts,
+        recovery_successes: snapshot.tlog_delta_signals.recovery_successes,
+        recovery_failures: snapshot.tlog_delta_signals.recovery_failures,
+        recovery_suppressed: snapshot.tlog_delta_signals.recovery_suppressed,
+        recovery_loop_breaks: snapshot.tlog_delta_signals.recovery_loop_breaks,
+        recovery_regressions: snapshot.tlog_delta_signals.recovery_regressions,
+        recovery_measurement_points: snapshot.tlog_delta_signals.recovery_measurement_points,
         tlog_lag_total_ms: snapshot.tlog_delta_signals.lag_total_ms,
         tlog_actionable_lag_total_ms: snapshot.tlog_delta_signals.actionable_lag_total_ms,
         tlog_dominant_actionable_lag_kind: snapshot

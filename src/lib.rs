@@ -35,6 +35,7 @@ mod prompt_inputs;
 pub mod prompts;
 mod protocol;
 pub mod refactor_analysis;
+pub mod recovery;
 pub mod rename_semantic;
 mod reports;
 mod semantic;

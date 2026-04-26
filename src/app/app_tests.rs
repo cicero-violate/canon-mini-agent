@@ -7,8 +7,8 @@ mod tests {
         classify_planner_action_result_class, ensure_workspace_artifact_baseline,
         executor_step_limit_feedback,
         has_actionable_objectives, inbound_message_from_user, invariant_id_from_reason,
-        is_chromium_transport_error, lane_has_stale_executor_claim,
-        plan_has_incomplete_tasks, route_gate_blocker_message,
+        is_chromium_transport_error, lane_has_stale_executor_claim, plan_has_incomplete_tasks,
+        route_gate_blocker_message, route_gate_recovery_decision,
         planner_completion_allows_executor_dispatch, semantic_action_fingerprint,
         should_reject_solo_self_complete,
         RecordedMessageKind,
@@ -223,6 +223,74 @@ mod tests {
             payload.get("evidence").and_then(|v| v.as_str()),
             Some(reason)
         );
+    }
+
+    #[test]
+    fn route_gate_missing_target_recovery_is_tlog_driven_and_canonical() {
+        let source = include_str!("app_planner_executor.rs");
+        let record_violation = source
+            .find("writer.record_violation(\"executor\", reason);")
+            .expect("route gate block must append an invariant violation to tlog");
+        let recovery_count = source[record_violation..]
+            .find("route_gate_recovery_decision(ws, reason)")
+            .map(|offset| record_violation + offset)
+            .expect("route gate must derive recovery from tlog evidence");
+        let recovery_effect = source[recovery_count..]
+            .find("EffectEvent::RecoveryTriggered")
+            .map(|offset| recovery_count + offset)
+            .expect("recovery must record typed tlog evidence before canonical action");
+        let clear_pending = source[recovery_effect..]
+            .find("ControlEvent::LanePendingSet")
+            .map(|offset| recovery_effect + offset)
+            .expect("recovery must clear executor lane pending state canonically");
+        let consume_wake = source[clear_pending..]
+            .find("ControlEvent::WakeSignalConsumed")
+            .map(|offset| clear_pending + offset)
+            .expect("recovery must consume the stale executor wake canonically");
+        let reroute_planner = source[consume_wake..]
+            .find("apply_scheduled_phase_if_changed(writer, Some(\"planner\"));")
+            .map(|offset| consume_wake + offset)
+            .expect("recovery must route control back to planner");
+
+        assert!(
+            record_violation < recovery_count
+                && recovery_count < recovery_effect
+                && recovery_effect < clear_pending
+                && clear_pending < consume_wake
+                && consume_wake < reroute_planner,
+            "missing-target recovery must be tlog evidence -> recovery effect -> canonical executor cleanup -> planner reroute"
+        );
+    }
+
+    #[test]
+    fn repeated_missing_target_route_violation_triggers_recovery_count() {
+        let _guard = global_state_lock().lock().unwrap();
+        let ws = temp_workspace("missing-target-recovery-count");
+        fs::create_dir_all(ws.join("agent_state")).unwrap();
+        let reason = "invariant gate blocked role `executor`: Action targeted a path that does not exist — plan is referencing a target that has not been created yet [id=INV-test]";
+        let tlog_path = ws.join("agent_state/tlog.ndjson");
+        let line = |seq: usize| {
+            serde_json::json!({
+                "seq": seq,
+                "ts_ms": seq,
+                "event": {
+                    "class": "effect",
+                    "event": {
+                        "kind": "invariant_violation",
+                        "proposed_role": "executor",
+                        "reason": reason
+                    }
+                }
+            })
+            .to_string()
+        };
+        fs::write(&tlog_path, format!("{}\n{}\n", line(1), line(2))).unwrap();
+
+        assert_eq!(
+            route_gate_recovery_decision(&ws, reason).map(|decision| decision.support_count),
+            Some(2)
+        );
+        fs::remove_dir_all(ws).unwrap();
     }
 
     #[test]

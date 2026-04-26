@@ -50,6 +50,7 @@ pub struct EvaluationVector {
     pub improvement_measurement: f64,
     pub improvement_validation: f64,
     pub improvement_effectiveness: f64,
+    pub recovery_effectiveness: f64,
 }
 
 impl EvaluationVector {
@@ -65,6 +66,7 @@ impl EvaluationVector {
             self.improvement_measurement.clamp(0.001, 1.0),
             self.improvement_validation.clamp(0.001, 1.0),
             self.improvement_effectiveness.clamp(0.001, 1.0),
+            self.recovery_effectiveness.clamp(0.001, 1.0),
         ];
         let product = values.iter().product::<f64>();
         product.powf(1.0 / values.len() as f64)
@@ -121,6 +123,7 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         input.tlog_delta_signals.improvement_measurement_score,
         input.tlog_delta_signals.improvement_validation_score,
         input.tlog_delta_signals.improvement_effectiveness_score,
+        input.tlog_delta_signals.recovery_effectiveness_score,
     );
     // Fold semantic error rate into safety so a clean build alone cannot produce safety = 1.0.
     vector.safety = clamp_unit(vector.safety * (1.0 - 0.3 * input.semantic_fn_error_rate));
@@ -229,6 +232,7 @@ pub fn evaluate_repo_state(
     improvement_measurement_score: f64,
     improvement_validation_score: f64,
     improvement_effectiveness_score: f64,
+    recovery_effectiveness_score: f64,
 ) -> EvaluationVector {
     EvaluationVector {
         objective_progress: reward_alignment_score(objectives_completed, objectives_total),
@@ -241,6 +245,7 @@ pub fn evaluate_repo_state(
         improvement_measurement: improvement_measurement_score.clamp(0.0, 1.0),
         improvement_validation: improvement_validation_score.clamp(0.0, 1.0),
         improvement_effectiveness: improvement_effectiveness_score.clamp(0.0, 1.0),
+        recovery_effectiveness: recovery_effectiveness_score.clamp(0.0, 1.0),
     }
 }
 
@@ -332,6 +337,14 @@ pub struct TlogDeltaSignals {
     pub regressed_improvement_attempts: usize,
     pub eval_measurement_points: usize,
     pub measurement_regressions: usize,
+    pub recovery_attempts: usize,
+    pub recovery_successes: usize,
+    pub recovery_failures: usize,
+    pub recovery_suppressed: usize,
+    pub recovery_loop_breaks: usize,
+    pub recovery_regressions: usize,
+    pub recovery_measurement_points: usize,
+    pub recovery_effectiveness_score: f64,
     pub improvement_measurement_score: f64,
     pub improvement_validation_score: f64,
     pub improvement_effectiveness_score: f64,
@@ -544,10 +557,14 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                     signals.measurement_regressions += 1;
                 }
             }
+            Event::Effect {
+                event: EffectEvent::RecoverySuppressed { .. },
+            } => signals.recovery_suppressed += 1,
             _ => {}
         }
     }
 
+    score_recovery_windows(records, &mut signals);
     signals.missing_action_results = llm_action_command_ids
         .difference(&action_result_command_ids)
         .count();
@@ -574,6 +591,7 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
     signals.improvement_measurement_score = improvement_measurement_score(&signals);
     signals.improvement_validation_score = improvement_validation_score(&signals);
     signals.improvement_effectiveness_score = improvement_effectiveness_score(&signals);
+    signals.recovery_effectiveness_score = recovery_effectiveness_score(&signals);
     signals.score = canonical_delta_health_score(&signals);
     signals
 }
@@ -654,7 +672,10 @@ fn canonical_delta_health_scores(signals: &TlogDeltaSignals) -> [f64; 10] {
         checkpoint_score,
         restart_score,
         improvement_validation_score(signals),
-        improvement_effectiveness_score(signals),
+        geometric_score(&[
+            improvement_effectiveness_score(signals),
+            recovery_effectiveness_score(signals),
+        ]),
     ]
 }
 
@@ -689,6 +710,166 @@ pub fn improvement_effectiveness_score(signals: &TlogDeltaSignals) -> f64 {
         signals.measured_improvement_attempts as f64,
     )
     .min(1.0)
+}
+
+pub fn recovery_effectiveness_score(signals: &TlogDeltaSignals) -> f64 {
+    if signals.recovery_attempts == 0 {
+        return 1.0;
+    }
+    safe_ratio(
+        signals
+            .recovery_successes
+            .saturating_add(signals.recovery_loop_breaks) as f64,
+        signals.recovery_attempts as f64,
+    )
+    .min(1.0)
+}
+
+const RECOVERY_EVAL_WINDOW_EVENTS: usize = 32;
+
+fn score_recovery_windows(records: &[crate::tlog::TlogRecord], signals: &mut TlogDeltaSignals) {
+    for (idx, record) in records.iter().enumerate() {
+        let Event::Effect {
+            event:
+                EffectEvent::RecoveryTriggered {
+                    class,
+                    support_count,
+                    ..
+                },
+        } = &record.event
+        else {
+            continue;
+        };
+
+        signals.recovery_attempts = signals.recovery_attempts.saturating_add(1);
+        signals.recovery_measurement_points = signals.recovery_measurement_points.saturating_add(1);
+
+        let window_end = records.len().min(idx + 1 + RECOVERY_EVAL_WINDOW_EVENTS);
+        let window = &records[idx + 1..window_end];
+        if score_explicit_recovery_outcome(window, signals, class) {
+            continue;
+        }
+        let progress_event_seen = window.iter().any(recovery_progress_event_seen);
+        let failure_count_after = window
+            .iter()
+            .filter(|candidate| recovery_same_class_failure_seen(candidate, class))
+            .count();
+        if progress_event_seen && failure_count_after == 0 {
+            signals.recovery_successes = signals.recovery_successes.saturating_add(1);
+            if *support_count > failure_count_after {
+                signals.recovery_loop_breaks = signals.recovery_loop_breaks.saturating_add(1);
+            }
+        } else {
+            signals.recovery_failures = signals.recovery_failures.saturating_add(1);
+            signals.recovery_regressions = signals.recovery_regressions.saturating_add(1);
+        }
+    }
+}
+
+fn score_explicit_recovery_outcome(
+    window: &[crate::tlog::TlogRecord],
+    signals: &mut TlogDeltaSignals,
+    class: &str,
+) -> bool {
+    let Some(outcome) = window.iter().find_map(|record| match &record.event {
+        Event::Effect {
+            event:
+                EffectEvent::RecoveryOutcomeRecorded {
+                    class: outcome_class,
+                    success,
+                    failure_count_before,
+                    failure_count_after,
+                    progress_event_seen,
+                    ..
+                },
+        } if outcome_class == class => Some((
+            *success,
+            *failure_count_before,
+            *failure_count_after,
+            *progress_event_seen,
+        )),
+        _ => None,
+    }) else {
+        return false;
+    };
+
+    let (success, failure_count_before, failure_count_after, progress_event_seen) = outcome;
+    if success {
+        signals.recovery_successes = signals.recovery_successes.saturating_add(1);
+        if failure_count_after < failure_count_before || progress_event_seen {
+            signals.recovery_loop_breaks = signals.recovery_loop_breaks.saturating_add(1);
+        }
+    } else {
+        signals.recovery_failures = signals.recovery_failures.saturating_add(1);
+        signals.recovery_regressions = signals.recovery_regressions.saturating_add(1);
+    }
+    true
+}
+
+fn recovery_progress_event_seen(record: &crate::tlog::TlogRecord) -> bool {
+    match &record.event {
+        Event::Control {
+            event: ControlEvent::PlannerPendingSet { pending: true },
+        } => true,
+        Event::Control {
+            event:
+                ControlEvent::ScheduledPhaseSet {
+                    phase: Some(phase),
+                },
+        } => phase == "planner",
+        Event::Effect {
+            event: EffectEvent::ActionResultRecorded { ok: true, .. },
+        } => true,
+        Event::Effect {
+            event: EffectEvent::WorkspaceArtifactWriteApplied { .. },
+        } => true,
+        Event::Effect {
+            event:
+                EffectEvent::EvalScoreRecorded {
+                    delta_g,
+                    promotion_eligible,
+                    ..
+                },
+        } => *promotion_eligible || delta_g.map(|delta| delta >= 0.0).unwrap_or(false),
+        _ => false,
+    }
+}
+
+fn recovery_same_class_failure_seen(record: &crate::tlog::TlogRecord, class: &str) -> bool {
+    match &record.event {
+        Event::Effect {
+            event:
+                EffectEvent::InvariantViolation {
+                    proposed_role,
+                    reason,
+                },
+        } => proposed_role == "executor" && recovery_reason_matches_class(reason, class),
+        Event::Effect {
+            event:
+                EffectEvent::RecoveryOutcomeRecorded {
+                    class: outcome_class,
+                    success: false,
+                    ..
+                },
+        } => outcome_class == class,
+        _ => false,
+    }
+}
+
+fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
+    let text = reason.to_ascii_lowercase();
+    match class {
+        "missing_target" => text.contains("does not exist") || text.contains("missing_target"),
+        "invalid_route" => text.contains("invalid_route"),
+        "llm_timeout" => text.contains("timeout"),
+        "compile_error" => text.contains("cargo") || text.contains("compile"),
+        "verification_failed" => text.contains("verification"),
+        "invalid_schema" => text.contains("schema"),
+        "step_limit_exceeded" => text.contains("step limit") || text.contains("step budget"),
+        "checkpoint_runtime_divergence" => text.contains("checkpoint"),
+        "reaction_only" => text.contains("reaction_only") || text.contains("prose-only"),
+        _ => false,
+    }
 }
 
 fn is_successful_improvement_action(action: &str, result: &str) -> bool {
@@ -1019,6 +1200,7 @@ mod tests {
             improvement_measurement: 1.0,
             improvement_validation: 1.0,
             improvement_effectiveness: 1.0,
+            recovery_effectiveness: 1.0,
         };
 
         assert!(vector.geometric_mean_like_score() > 0.0);
@@ -1359,6 +1541,7 @@ mod tests {
                 improvement_measurement: 1.0,
                 improvement_validation: 1.0,
                 improvement_effectiveness: 1.0,
+                recovery_effectiveness: 1.0,
                 improvement_attempts: 1,
                 measured_improvement_attempts: 1,
                 unmeasured_improvement_attempts: 0,
@@ -1368,6 +1551,13 @@ mod tests {
                 regressed_improvement_attempts: 0,
                 eval_measurement_points: 1,
                 measurement_regressions: 0,
+                recovery_attempts: 0,
+                recovery_successes: 0,
+                recovery_failures: 0,
+                recovery_suppressed: 0,
+                recovery_loop_breaks: 0,
+                recovery_regressions: 0,
+                recovery_measurement_points: 0,
                 tlog_lag_total_ms: 0,
                 tlog_actionable_lag_total_ms: 0,
                 tlog_dominant_actionable_lag_kind: String::new(),
@@ -1477,6 +1667,7 @@ mod tests {
                     improvement_measurement: 1.0,
                     improvement_validation: 1.0,
                     improvement_effectiveness: 0.0,
+                    recovery_effectiveness: 1.0,
                     improvement_attempts: 1,
                     measured_improvement_attempts: 1,
                     unmeasured_improvement_attempts: 0,
@@ -1486,6 +1677,13 @@ mod tests {
                     regressed_improvement_attempts: 1,
                     eval_measurement_points: 1,
                     measurement_regressions: 1,
+                    recovery_attempts: 0,
+                    recovery_successes: 0,
+                    recovery_failures: 0,
+                    recovery_suppressed: 0,
+                    recovery_loop_breaks: 0,
+                    recovery_regressions: 0,
+                    recovery_measurement_points: 0,
                     tlog_lag_total_ms: 0,
                     tlog_actionable_lag_total_ms: 0,
                     tlog_dominant_actionable_lag_kind: String::new(),
@@ -1511,5 +1709,68 @@ mod tests {
         assert_eq!(signals.regressed_improvement_attempts, 1);
         assert_eq!(signals.improvement_effectiveness_score, 0.0);
         assert!(signals.score < 1.0);
+    }
+
+    #[test]
+    fn recovery_trigger_followed_by_progress_counts_success() {
+        let records = vec![
+            crate::tlog::TlogRecord {
+                seq: 1,
+                ts_ms: 1,
+                event: Event::effect(EffectEvent::RecoveryTriggered {
+                    generated_at_ms: 1,
+                    class: "missing_target".to_string(),
+                    policy: "clear_executor_and_wake_planner".to_string(),
+                    reason: "path does not exist".to_string(),
+                    support_count: 2,
+                    threshold: 2,
+                    window_ms: 300_000,
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 2,
+                ts_ms: 2,
+                event: Event::control(ControlEvent::PlannerPendingSet { pending: true }),
+            },
+        ];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.recovery_attempts, 1);
+        assert_eq!(signals.recovery_successes, 1);
+        assert_eq!(signals.recovery_failures, 0);
+        assert_eq!(signals.recovery_effectiveness_score, 1.0);
+    }
+
+    #[test]
+    fn recovery_trigger_followed_by_same_failure_counts_failure() {
+        let records = vec![
+            crate::tlog::TlogRecord {
+                seq: 1,
+                ts_ms: 1,
+                event: Event::effect(EffectEvent::RecoveryTriggered {
+                    generated_at_ms: 1,
+                    class: "missing_target".to_string(),
+                    policy: "clear_executor_and_wake_planner".to_string(),
+                    reason: "path does not exist".to_string(),
+                    support_count: 2,
+                    threshold: 2,
+                    window_ms: 300_000,
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 2,
+                ts_ms: 2,
+                event: Event::effect(EffectEvent::InvariantViolation {
+                    proposed_role: "executor".to_string(),
+                    reason: "path does not exist".to_string(),
+                }),
+            },
+        ];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+        assert_eq!(signals.recovery_attempts, 1);
+        assert_eq!(signals.recovery_successes, 0);
+        assert_eq!(signals.recovery_failures, 1);
+        assert_eq!(signals.recovery_effectiveness_score, 0.0);
     }
 }

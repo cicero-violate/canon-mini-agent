@@ -439,6 +439,32 @@ pub enum EffectEvent {
         group_count: usize,
         mean_reward: f64,
     },
+    RecoveryTriggered {
+        generated_at_ms: u64,
+        class: String,
+        policy: String,
+        reason: String,
+        support_count: usize,
+        threshold: usize,
+        window_ms: u64,
+    },
+    RecoverySuppressed {
+        generated_at_ms: u64,
+        class: String,
+        policy: String,
+        reason: String,
+        suppression_reason: String,
+    },
+    RecoveryOutcomeRecorded {
+        generated_at_ms: u64,
+        class: String,
+        policy: String,
+        success: bool,
+        failure_count_before: usize,
+        failure_count_after: usize,
+        progress_event_seen: bool,
+        eval_window_events: usize,
+    },
     /// Eval snapshot emitted each report cycle.  tlog is authority; latest.json is a projection.
     EvalScoreRecorded {
         generated_at_ms: u64,
@@ -479,6 +505,22 @@ pub enum EffectEvent {
         eval_measurement_points: usize,
         #[serde(default)]
         measurement_regressions: usize,
+        #[serde(default)]
+        recovery_effectiveness: f64,
+        #[serde(default)]
+        recovery_attempts: usize,
+        #[serde(default)]
+        recovery_successes: usize,
+        #[serde(default)]
+        recovery_failures: usize,
+        #[serde(default)]
+        recovery_suppressed: usize,
+        #[serde(default)]
+        recovery_loop_breaks: usize,
+        #[serde(default)]
+        recovery_regressions: usize,
+        #[serde(default)]
+        recovery_measurement_points: usize,
         #[serde(default)]
         tlog_lag_total_ms: u64,
         #[serde(default)]

@@ -38,6 +38,34 @@ The agent reads its own execution history (`agent_state/` logs, `VIOLATIONS.json
 - Update `SPEC.md` when runtime behavior diverges from the spec.
 - Never re-close a task that was re-opened without adding a regression test to prevent recurrence.
 
+### 0.4 Canonical Recovery Engine
+
+All recurring failures must pass through a typed recovery loop:
+
+```text
+T=tlog
+K=ErrorClass
+R=RecoveryPolicy
+A=RecoveryAction
+E=eval
+
+T → classify(K) → detect repeat(K) → choose R(K) → emit A evidence → evaluate E
+```
+
+Recovery decisions are pure policy outputs. Runtime recovery may only record
+typed `EffectEvent` evidence and apply existing `ControlEvent` transitions
+through `CanonicalWriter`. Recovery must not silently mutate source files,
+`PLAN.json`, projected issue files, or generated graph artifacts.
+
+Invariant:
+
+```text
+∀K: repeated(K,T) ≥ Θ_K ⇒ typed RecoveryDecision(K)
+```
+
+Eval must report recovery attempts, successes, failures, suppressions, loop
+breaks, regressions, measurement points, and recovery effectiveness.
+
 ### 0.5 Objective Evolution
 
 At the end of every orchestration cycle, planner MUST review `agent_state/OBJECTIVES.json` and update it:
@@ -144,6 +172,8 @@ Hard boundary rules:
 | `Tlog`            | `src/tlog.rs`             | Append-only NDJSON event log at `AgentStateDir/tlog.ndjson`              |
 
 **Invariant gate:** Before emitting a `ControlEvent`, callers invoke `evaluate_invariant_gate` (`src/invariants.rs`). On violation the caller calls `writer.record_violation(...)` — which appends an `EffectEvent::InvariantViolation` to the tlog without advancing state — and aborts the transition.
+
+**Tlog-driven route recovery:** If the route gate repeatedly blocks executor dispatch for the same missing-target reason, the runtime must treat the repeated `InvariantViolation` records in `AgentStateDir/tlog.ndjson` as recovery evidence. The recovery path must be canonical: clear stale executor lane pending state with `ControlEvent::LanePendingSet`, consume stale executor wake with `ControlEvent::WakeSignalConsumed`, and route control back to planner with `ControlEvent::ScheduledPhaseSet { phase: Some("planner") }` plus `PlannerPendingSet { pending: true }`.
 
 **`RuntimeState` fields** (never serialized, never checkpointed):
 - `submitted_turns: HashMap<(u32, u64), SubmittedExecutorTurn>` — active executor turns keyed by `(tab_id, turn_id)`
