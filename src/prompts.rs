@@ -406,13 +406,13 @@ fn compute_prompt_budget<'a>(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: prompt_text
 /// Inputs: &str, &[prompts::PromptItem<'_>], &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: renders budgeted prompt text without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: excludes empty non-required items; output stays within prompt overflow byte budget in debug assertions
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn render_budgeted_prompt<'a>(prefix: &str, items: &[PromptItem<'a>], suffix: &str) -> String {
     let active_items = items
@@ -1370,13 +1370,13 @@ fn validate_optional_message_severity(obj: &serde_json::Map<String, Value>) -> R
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: message_role_schema
 /// Inputs: &serde_json::Map<std::string::String, serde_json::Value>, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: validates optional message role field without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: absent role is accepted; present role must be user, executor, or planner
+/// Failure: returns validation error for unsupported role values
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_optional_message_role(obj: &serde_json::Map<String, Value>, field: &str) -> Result<()> {
     let Some(role) = obj.get(field).and_then(|v| v.as_str()) else {

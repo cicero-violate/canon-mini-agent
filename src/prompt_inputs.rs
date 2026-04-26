@@ -303,13 +303,13 @@ fn truncate_with_ellipsis(text: &str, max_chars: usize) -> String {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: enforced_invariants_prompt_summary
 /// Inputs: &str
 /// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: renders enforced invariant summary text without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: empty or empty-invariant input returns empty text; invalid JSON is preserved as raw text; ranked output excludes collapsed invariants and is capped at eight entries
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
     if raw.trim().is_empty() {

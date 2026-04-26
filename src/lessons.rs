@@ -1054,13 +1054,13 @@ pub fn load_lessons_artifact(workspace: &Path) -> LessonsArtifact {
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: lessons_projection
 /// Inputs: &std::path::Path, &prompt_inputs::LessonsArtifact, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: persists lessons projection through default canonical writer path
+/// Forbidden: network access, process spawning
+/// Invariants: delegates to persist_lessons_projection_with_writer with no custom writer
+/// Failure: returns projection persistence errors
 /// Provenance: rustc:facts + rustc:docstring
 pub fn persist_lessons_projection(
     workspace: &Path,

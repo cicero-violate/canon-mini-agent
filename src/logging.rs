@@ -108,13 +108,13 @@ fn action_log_text(observation: &str, rationale: &str) -> Option<String> {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: action_text
 /// Inputs: &str
 /// Outputs: std::option::Option<serde_json::Value>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: parses first structured action from text without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: parse failures or empty action lists return None; first parsed action is selected when present
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_action_from_text(text: &str) -> Option<Value> {
     parse_actions(text)
@@ -701,13 +701,13 @@ pub fn log_error_event(
 }
 
 /// Intent: event_append
-/// Resource: error
+/// Resource: llm_completion_log
 /// Inputs: &str, &llm_runtime::config::LlmEndpoint, usize, &str, &serde_json::Value
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends compact LLM completion action log record
+/// Forbidden: network access, process spawning, mutation outside action log append path
+/// Invariants: record includes role, endpoint id, step, command id, action op, observation, rationale, and injected action fields
+/// Failure: returns action log append errors
 /// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn append_llm_completion_log(
     role: &str,

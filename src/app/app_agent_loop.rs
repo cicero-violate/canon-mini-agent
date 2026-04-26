@@ -580,13 +580,13 @@ pub(super) async fn run_agent(
 }
 
 /// Intent: canonical_write
-/// Resource: error
+/// Resource: post_restart_result
 /// Inputs: &str, &str, &str, usize, std::option::Option<u32>, std::option::Option<u64>, &str, &str
 /// Outputs: app::PostRestartResult
 /// Effects: fs_write, state_write
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Forbidden: network access, process spawning
+/// Invariants: persisted payload and returned result share role, action, result, step, tab id, turn id, endpoint id, restart kind, and signature
+/// Failure: write and serialization errors are best-effort suppressed
 /// Provenance: rustc:facts + rustc:docstring
 pub(super) fn write_post_restart_result(
     role: &str,
@@ -1080,13 +1080,13 @@ pub(super) fn parsed_completion_command_summary(action: &serde_json::Value) -> S
 }
 
 /// Intent: event_append
-/// Resource: error
+/// Resource: executor_completion_log
 /// Inputs: &app::SubmittedExecutorTurn, usize, u64, u32, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends compact executor completion log record
+/// Forbidden: network access, process spawning, mutation outside action log append path
+/// Invariants: record includes actor, lane label, endpoint id, step, turn id, command id, parsed completion fields, text, and tab id
+/// Failure: returns action log append errors
 /// Provenance: rustc:facts + rustc:docstring
 pub(super) fn append_executor_completion_log(
     submitted: &SubmittedExecutorTurn,

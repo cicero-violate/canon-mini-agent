@@ -245,13 +245,13 @@ pub(super) fn record_canonical_inbound_message(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: executor_completion_target
 /// Inputs: &str
 /// Outputs: &str
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: emits diagnostic stderr when rerouting executor completion target
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: executor and unknown targets normalize to planner; planner and other accepted target refs are preserved only when valid
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub(super) fn normalize_executor_completion_target<'a>(to_role: &'a str) -> &'a str {
     if to_role.eq_ignore_ascii_case("executor") {

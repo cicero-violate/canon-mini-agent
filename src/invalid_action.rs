@@ -998,13 +998,13 @@ fn collect_route_field_value(
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: message_payload_schema
 /// Inputs: &mut std::vec::Vec<std::string::String>, std::option::Option<&serde_json::Map<std::string::String, serde_json::Value>>
 /// Outputs: ()
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: records schema diff when payload.summary is missing or blank
+/// Forbidden: filesystem writes, process spawning, network access
+/// Invariants: schema_diff receives at most one payload.summary missing entry
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_message_payload_summary(
     schema_diff: &mut Vec<String>,

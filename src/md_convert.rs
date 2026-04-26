@@ -457,13 +457,13 @@ enum ObjectiveSection {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: objective_title
 /// Inputs: &str
 /// Outputs: reports::ObjectiveLevel
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: derives objective level from title text without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: precedence is critical, high, medium, then low default
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_objective_level(title: &str) -> ObjectiveLevel {
     let title_lower = title.to_lowercase();

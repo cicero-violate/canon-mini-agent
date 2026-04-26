@@ -2140,13 +2140,13 @@ fn implicit_state_machine_candidate_symbol(symbol: &str) -> bool {
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: implicit_state_machine_issue
 /// Inputs: &str, &semantic::SymbolSummary, &std::collections::HashSet<std::string::String>
 /// Outputs: issues::Issue
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: constructs implicit state machine issue data without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: state domains are sorted before display and metrics; priority is high for back edges or multiple state domains
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_implicit_state_machine_issue(
     crate_name: &str,

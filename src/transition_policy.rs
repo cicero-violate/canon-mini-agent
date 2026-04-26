@@ -62,13 +62,13 @@ fn require_in_progress_lane(
 }
 
 /// Intent: validation_gate
-/// Resource: error
+/// Resource: verifier_phase_lane
 /// Inputs: &system_state::SystemState, &str, std::option::Option<usize>
 /// Outputs: std::result::Result<(), std::string::String>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: validates verifier phase lane requirements without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: verifier phases require a lane and that lane must be in progress
+/// Failure: returns phase lane requirement or in-progress lane validation errors
 /// Provenance: rustc:facts + rustc:docstring
 fn validate_verifier_phase(
     state: &SystemState,
