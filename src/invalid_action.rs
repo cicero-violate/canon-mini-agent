@@ -1034,15 +1034,16 @@ fn validate_blocker_payload_placement(
     schema_diff: &mut Vec<String>,
     obj: &serde_json::Map<String, Value>,
 ) {
-    if obj.contains_key("blocker")
-        || obj.contains_key("evidence")
-        || obj.contains_key("required_action")
-    {
+    if has_top_level_blocker_payload_fields(obj) {
         add_unique_schema_diff(
             schema_diff,
             "blocker fields must be inside payload: blocker/evidence/required_action".to_string(),
         );
     }
+}
+
+fn has_top_level_blocker_payload_fields(obj: &serde_json::Map<String, Value>) -> bool {
+    obj.contains_key("blocker") || obj.contains_key("evidence") || obj.contains_key("required_action")
 }
 
 /// Intent: validation_gate

@@ -21,13 +21,16 @@ pub(super) fn preflight_executor_dispatch(
     } else {
         "1+"
     };
-    let runtime_busy = !rt.executor_submit_inflight.is_empty()
-        || !rt.submitted_turns.is_empty()
-        || rt
-            .deferred_completions
-            .values()
-            .any(|queue| !queue.is_empty());
+    let runtime_busy = executor_runtime_busy(rt);
     if ready_count == "0" {
+        crate::blockers::record_action_failure_with_writer(
+            ctx.workspace,
+            Some(&mut *writer),
+            "orchestrator",
+            "planner_handoff_without_ready_tasks",
+            "planner_handoff_without_ready_tasks: executor preflight observed H=ready/Q=0; enforce_plan_ready_binding blocks executor dispatch and wakes planner",
+            None,
+        );
         if !runtime_busy {
             clear_stale_pending_executor_lanes_without_runtime(ctx, writer);
         }
@@ -39,15 +42,7 @@ pub(super) fn preflight_executor_dispatch(
         return Some(false);
     }
 
-    let lanes_seeded = ctx.lanes.iter().any(|lane| {
-        let lane_state = writer.state().lanes.get(&lane.index);
-        lane_state.map(|state| state.pending).unwrap_or(false)
-            || lane_state
-                .and_then(|state| state.in_progress_by.as_ref())
-                .is_some()
-            || writer.state().lane_in_flight(lane.index)
-            || writer.state().lane_submit_active(lane.index)
-    });
+    let lanes_seeded = executor_lanes_have_runtime_or_pending_work(ctx, writer);
     if !lanes_seeded && !runtime_busy {
         eprintln!(
             "[orchestrate] executor bootstrap: ready tasks exist but no lane work is seeded; waking planner"
@@ -58,6 +53,27 @@ pub(super) fn preflight_executor_dispatch(
     }
 
     None
+}
+
+fn executor_runtime_busy(rt: &RuntimeState) -> bool {
+    !rt.executor_submit_inflight.is_empty()
+        || !rt.submitted_turns.is_empty()
+        || rt.deferred_completions.values().any(|queue| !queue.is_empty())
+}
+
+fn executor_lanes_have_runtime_or_pending_work(
+    ctx: &OrchestratorContext<'_>,
+    writer: &CanonicalWriter,
+) -> bool {
+    ctx.lanes.iter().any(|lane| {
+        let lane_state = writer.state().lanes.get(&lane.index);
+        lane_state.map(|state| state.pending).unwrap_or(false)
+            || lane_state
+                .and_then(|state| state.in_progress_by.as_ref())
+                .is_some()
+            || writer.state().lane_in_flight(lane.index)
+            || writer.state().lane_submit_active(lane.index)
+    })
 }
 
 pub(super) fn clear_stale_pending_executor_lanes_without_runtime(

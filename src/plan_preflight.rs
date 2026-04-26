@@ -121,11 +121,11 @@ fn try_preflight_ready_tasks(workspace: &Path) -> Result<Vec<PreflightBounce>> {
     };
     let mut plan: Value = serde_json::from_str(&raw)?;
 
-    let crate_names = SemanticIndex::available_crates(workspace);
-    if crate_names.is_empty() {
-        // No graph data — skip validation to avoid false positives.
+    let Some(tasks) = plan.get_mut("tasks").and_then(|v| v.as_array_mut()) else {
         return Ok(vec![]);
-    }
+    };
+
+    let crate_names = SemanticIndex::available_crates(workspace);
 
     // Load all available indexes once; cache by crate name.
     let indexes: HashMap<String, SemanticIndex> = crate_names
@@ -136,14 +136,7 @@ fn try_preflight_ready_tasks(workspace: &Path) -> Result<Vec<PreflightBounce>> {
                 .map(|idx| (cn.clone(), idx))
         })
         .collect();
-
-    if indexes.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let Some(tasks) = plan.get_mut("tasks").and_then(|v| v.as_array_mut()) else {
-        return Ok(vec![]);
-    };
+    let symbol_validation_available = !crate_names.is_empty() && !indexes.is_empty();
 
     let mut bounces = Vec::new();
 
@@ -159,6 +152,26 @@ fn try_preflight_ready_tasks(workspace: &Path) -> Result<Vec<PreflightBounce>> {
             .unwrap_or("")
             .to_string();
         if task_id.is_empty() {
+            continue;
+        }
+
+        if let Some(note) = ready_task_repair_binding_note(&task_id, task) {
+            if let Some(obj) = task.as_object_mut() {
+                obj.insert(
+                    "status".to_string(),
+                    Value::String("needs_planning".to_string()),
+                );
+                obj.insert("preflight_note".to_string(), Value::String(note.clone()));
+            }
+            bounces.push(PreflightBounce {
+                task_id,
+                missing_symbols: Vec::new(),
+                note,
+            });
+            continue;
+        }
+
+        if !symbol_validation_available {
             continue;
         }
 
@@ -227,6 +240,47 @@ fn collect_task_text(task: &Value) -> String {
         }
     }
     parts.join(" ")
+}
+
+fn ready_task_repair_binding_note(task_id: &str, task: &Value) -> Option<String> {
+    let repair_plan_id = task
+        .get("repair_plan_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let required_mutation = task
+        .get("required_mutation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let failure_class_present = task
+        .get("failure_class")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    let text = collect_task_text(task).to_ascii_lowercase();
+    let repair_like = failure_class_present
+        || !required_mutation.is_empty()
+        || text.contains("repair_plan")
+        || text.contains("repair_plan_id")
+        || text.contains("failure_class")
+        || text.contains("blocker_class:")
+        || text.contains("eval_metric:")
+        || text.contains("invariant:");
+    if !repair_like {
+        return None;
+    }
+    if repair_plan_id.is_empty() {
+        return Some(format!(
+            "Preflight: repair task {task_id} is ready but missing repair_plan_id — same(F) must bind to same(R) before executor dispatch"
+        ));
+    }
+    if required_mutation.is_empty() {
+        return Some(format!(
+            "Preflight: repair task {task_id} is ready with repair_plan_id={repair_plan_id} but missing required_mutation — same(R) must bind to same mutation before executor dispatch"
+        ));
+    }
+    None
 }
 
 /// Intent: pure_transform

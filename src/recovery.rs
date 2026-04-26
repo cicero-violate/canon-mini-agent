@@ -153,6 +153,13 @@ impl Default for RecoveryConfig {
                     RecoveryPolicy::EscalateDiagnostics,
                 ),
                 threshold(
+                    ErrorClass::PlannerHandoffWithoutReadyTasks,
+                    1,
+                    300_000,
+                    2,
+                    RecoveryPolicy::ClearExecutorAndWakePlanner,
+                ),
+                threshold(
                     ErrorClass::LlmTimeout,
                     1,
                     300_000,

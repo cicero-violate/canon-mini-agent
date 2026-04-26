@@ -642,6 +642,11 @@ fn build_replacement_plan(action: &Value) -> Result<Value> {
         .cloned()
         .ok_or_else(|| anyhow!("plan replace_plan missing plan object"))?;
     normalize_plan_object(&mut next_plan)?;
+    ensure_replacement_plan_shape(&next_plan)?;
+    Ok(next_plan)
+}
+
+fn ensure_replacement_plan_shape(next_plan: &Value) -> Result<()> {
     let tasks = next_plan
         .get("tasks")
         .and_then(|v| v.as_array())
@@ -652,7 +657,7 @@ fn build_replacement_plan(action: &Value) -> Result<Value> {
         .and_then(|v| v.as_array())
         .ok_or_else(|| anyhow!("PLAN.json missing dag.edges array"))?;
     ensure_dag(tasks, edges)?;
-    Ok(next_plan)
+    Ok(())
 }
 
 fn handle_plan_fast_paths(

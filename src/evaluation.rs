@@ -380,6 +380,32 @@ fn append_eval_threshold_violations(
             input.tlog_delta_signals.measured_improvement_attempts
         ));
     }
+    if input.tlog_delta_signals.artifact_lineage_orphans_new > 0 {
+        violations.push(format!(
+            "artifact_lineage_orphans_new={} boundary_seq={} ids={}",
+            input.tlog_delta_signals.artifact_lineage_orphans_new,
+            input
+                .tlog_delta_signals
+                .artifact_lineage_migration_seq_boundary,
+            input.tlog_delta_signals.orphan_artifact_ids.join(",")
+        ));
+    }
+    if input.tlog_delta_signals.handoff_without_ready > 0 {
+        violations.push(format!(
+            "handoff_without_ready={}",
+            input.tlog_delta_signals.handoff_without_ready
+        ));
+    }
+    if input.tlog_delta_signals.repair_plan_binding_checks > 0
+        && input.tlog_delta_signals.repair_plan_binding_rate < 1.0
+    {
+        violations.push(format!(
+            "repair_plan_binding_rate={:.3} checks={} passed={}",
+            input.tlog_delta_signals.repair_plan_binding_rate,
+            input.tlog_delta_signals.repair_plan_binding_checks,
+            input.tlog_delta_signals.repair_plan_binding_passed
+        ));
+    }
     if input.tlog_delta_signals.artifact_lineage_orphans > 0 {
         warnings.push(format!(
             "artifact_lineage_orphans={}/{} ids={}",
@@ -456,10 +482,20 @@ pub fn compute_delta(
         delta_g,
         semantic_contract_delta,
         safety_delta,
-        promotion_eligible: delta_g >= -0.001
-            && semantic_contract_delta >= -0.001
-            && safety_delta >= -0.001,
+        promotion_eligible: eval_delta_is_promotion_eligible(
+            delta_g,
+            semantic_contract_delta,
+            safety_delta,
+        ),
     }
+}
+
+fn eval_delta_is_promotion_eligible(
+    delta_g: f64,
+    semantic_contract_delta: f64,
+    safety_delta: f64,
+) -> bool {
+    delta_g >= -0.001 && semantic_contract_delta >= -0.001 && safety_delta >= -0.001
 }
 
 /// `diagnostics_repair_pressure` floored by open high-priority issue pressure.
@@ -630,7 +666,13 @@ pub struct TlogDeltaSignals {
     pub unapplied_artifact_writes: usize,
     pub artifact_lineage_complete: usize,
     pub artifact_lineage_orphans: usize,
+    pub artifact_lineage_orphans_new: usize,
+    pub artifact_lineage_migration_seq_boundary: u64,
     pub orphan_artifact_ids: Vec<String>,
+    pub handoff_without_ready: usize,
+    pub repair_plan_binding_checks: usize,
+    pub repair_plan_binding_passed: usize,
+    pub repair_plan_binding_rate: f64,
     pub git_checkpoint_blocked: usize,
     pub unsafe_checkpoint_attempts: usize,
     pub prompt_truncations: usize,
@@ -663,14 +705,38 @@ pub struct TlogDeltaSignals {
 
 const TLOG_LAG_GAP_MIN_MS: u64 = 1_000;
 const TLOG_LAG_GAP_MAX_MS: u64 = 120_000;
+pub const DEFAULT_ARTIFACT_LINEAGE_MIGRATION_SEQ_BOUNDARY: u64 = u64::MAX;
+
+fn plan_text_has_ready_task(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|plan| plan.get("ready_window").and_then(|v| v.as_array()).map(|items| !items.is_empty()))
+        .unwrap_or(false)
+}
+
+fn plan_text_has_repair_plan_binding(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|plan| plan.get("tasks").and_then(|v| v.as_array()).cloned())
+        .map(|tasks| {
+            tasks.iter().any(|task| {
+                task.get("repair_plan_id").and_then(|v| v.as_str()).is_some()
+                    && task.get("required_mutation").and_then(|v| v.as_str()).is_some()
+            })
+        })
+        .unwrap_or(false)
+}
 
 /// Pure invariant signal over a tlog delta window.
 ///
 /// Model: `I(ΔT) -> signal`, where ΔT is the recent canonical event window.
 pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> TlogDeltaSignals {
+    let lineage_boundary = configured_artifact_lineage_migration_seq_boundary();
     let mut signals = TlogDeltaSignals {
         event_count: records.len(),
         contiguous_seq: true,
+        artifact_lineage_migration_seq_boundary: lineage_boundary,
+        repair_plan_binding_rate: 1.0,
         ..TlogDeltaSignals::default()
     };
     if records.is_empty() {
@@ -687,6 +753,7 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
     let mut unmatched_restart_requests = 0usize;
     let mut open_improvement_attempts = 0usize;
     let mut open_unvalidated_improvement_attempts = 0usize;
+    let mut handoff_without_ready_since_ready_plan = 0usize;
 
     for (idx, record) in records.iter().enumerate() {
         let record_kind = tlog_event_kind(&record.event);
@@ -736,6 +803,15 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                 signals.last_plan_text_payload_bytes = signals
                     .last_plan_text_payload_bytes
                     .saturating_add(text.len() as u64);
+                if plan_text_has_ready_task(text) {
+                    handoff_without_ready_since_ready_plan = 0;
+                    signals.handoff_without_ready = 0;
+                }
+                if plan_text_has_repair_plan_binding(text) {
+                    signals.repair_plan_binding_checks = 0;
+                    signals.repair_plan_binding_passed = 0;
+                    signals.repair_plan_binding_rate = 1.0;
+                }
             }
             Event::Control {
                 event: ControlEvent::LastExecutorDiffSet { text },
@@ -765,10 +841,30 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                 }
             }
             Event::Effect {
-                event: EffectEvent::ActionResultRecorded { command_id, .. },
+                event:
+                    EffectEvent::ActionResultRecorded {
+                        command_id,
+                        action_kind,
+                        ok,
+                        result,
+                        ..
+                    },
             } => {
                 signals.action_results += 1;
                 action_result_command_ids.insert(command_id.clone());
+                if *ok && is_successful_improvement_action(action_kind, result) {
+                    signals.improvement_attempts += 1;
+                    open_improvement_attempts = open_improvement_attempts.saturating_add(1);
+                    open_unvalidated_improvement_attempts =
+                        open_unvalidated_improvement_attempts.saturating_add(1);
+                } else if *ok && is_improvement_validation_result(action_kind, result) {
+                    if open_unvalidated_improvement_attempts > 0 {
+                        signals.validated_improvement_attempts = signals
+                            .validated_improvement_attempts
+                            .saturating_add(open_unvalidated_improvement_attempts);
+                        open_unvalidated_improvement_attempts = 0;
+                    }
+                }
             }
             Event::Effect {
                 event: EffectEvent::LlmErrorBoundary { .. },
@@ -799,6 +895,7 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                 signals.artifact_write_requests += 1;
                 record_artifact_lineage(
                     &mut signals,
+                    record.seq,
                     artifact_id,
                     *source_event_seq,
                     producer_action,
@@ -822,6 +919,7 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                 signals.artifact_write_applies += 1;
                 record_artifact_lineage(
                     &mut signals,
+                    record.seq,
                     artifact_id,
                     *source_event_seq,
                     producer_action,
@@ -829,6 +927,34 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                     eval_outcome,
                 );
                 applied_artifact_signatures.insert(signature.clone());
+            }
+            Event::Effect {
+                event: EffectEvent::BlockerRecorded { record },
+            } => {
+                if record.error_class
+                    == crate::error_class::ErrorClass::PlannerHandoffWithoutReadyTasks
+                {
+                    handoff_without_ready_since_ready_plan =
+                        handoff_without_ready_since_ready_plan.saturating_add(1);
+                    signals.handoff_without_ready = handoff_without_ready_since_ready_plan;
+                }
+            }
+            Event::Effect {
+                event:
+                    EffectEvent::PlanVerifyRecorded {
+                        binding_checked,
+                        binding_passed,
+                        ..
+                    },
+            } => {
+                if *binding_checked {
+                    signals.repair_plan_binding_checks =
+                        signals.repair_plan_binding_checks.saturating_add(1);
+                    if *binding_passed {
+                        signals.repair_plan_binding_passed =
+                            signals.repair_plan_binding_passed.saturating_add(1);
+                    }
+                }
             }
             Event::Effect {
                 event:
@@ -933,6 +1059,7 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
     signals.restart_requests_without_child_start = unmatched_restart_requests;
     signals.unmeasured_improvement_attempts = open_improvement_attempts;
     signals.unvalidated_improvement_attempts = open_unvalidated_improvement_attempts;
+    signals.repair_plan_binding_rate = repair_plan_binding_rate(&signals);
     if let Some((kind, lag_ms)) = actionable_lag_by_next_kind
         .into_iter()
         .max_by_key(|(_, lag_ms)| *lag_ms)
@@ -1021,6 +1148,13 @@ fn canonical_artifact_score(signals: &TlogDeltaSignals) -> f64 {
     geometric_score(&[request_score, lineage_score])
 }
 
+fn configured_artifact_lineage_migration_seq_boundary() -> u64 {
+    std::env::var("CANON_ARTIFACT_LINEAGE_MIGRATION_SEQ_BOUNDARY")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_ARTIFACT_LINEAGE_MIGRATION_SEQ_BOUNDARY)
+}
+
 fn artifact_lineage_is_complete(
     artifact_id: &str,
     source_event_seq: u64,
@@ -1037,6 +1171,7 @@ fn artifact_lineage_is_complete(
 
 fn record_artifact_lineage(
     signals: &mut TlogDeltaSignals,
+    record_seq: u64,
     artifact_id: &str,
     source_event_seq: u64,
     producer_action: &str,
@@ -1054,6 +1189,10 @@ fn record_artifact_lineage(
         return;
     }
     signals.artifact_lineage_orphans = signals.artifact_lineage_orphans.saturating_add(1);
+    if record_seq >= signals.artifact_lineage_migration_seq_boundary {
+        signals.artifact_lineage_orphans_new =
+            signals.artifact_lineage_orphans_new.saturating_add(1);
+    }
     if signals.orphan_artifact_ids.len() < 8 {
         let id = if artifact_id.trim().is_empty() {
             "(missing_artifact_id)"
@@ -1061,6 +1200,18 @@ fn record_artifact_lineage(
             artifact_id
         };
         signals.orphan_artifact_ids.push(id.to_string());
+    }
+}
+
+fn repair_plan_binding_rate(signals: &TlogDeltaSignals) -> f64 {
+    if signals.repair_plan_binding_checks == 0 {
+        1.0
+    } else {
+        safe_ratio(
+            signals.repair_plan_binding_passed as f64,
+            signals.repair_plan_binding_checks as f64,
+        )
+        .clamp(0.0, 1.0)
     }
 }
 
@@ -1076,7 +1227,7 @@ fn canonical_restart_score(signals: &TlogDeltaSignals) -> f64 {
     }
 }
 
-fn canonical_delta_health_scores(signals: &TlogDeltaSignals) -> [f64; 11] {
+fn canonical_delta_health_scores(signals: &TlogDeltaSignals) -> [f64; 13] {
     let error_score = 1.0
         - safe_ratio(
             signals.llm_error_boundaries as f64,
@@ -1090,11 +1241,18 @@ fn canonical_delta_health_scores(signals: &TlogDeltaSignals) -> [f64; 11] {
         1.0 - safe_ratio(signals.unsafe_checkpoint_attempts as f64, 4.0).min(0.75);
     let prompt_truncation_score =
         1.0 - safe_ratio(signals.prompt_truncations as f64, 4.0).min(0.75);
+    let handoff_ready_score = if signals.handoff_without_ready == 0 {
+        1.0
+    } else {
+        0.0
+    };
     [
         canonical_seq_score(signals),
         canonical_turn_score(signals),
         canonical_action_score(signals),
         canonical_artifact_score(signals),
+        handoff_ready_score,
+        signals.repair_plan_binding_rate.clamp(0.0, 1.0),
         error_score,
         lag_score,
         checkpoint_score,
@@ -1350,18 +1508,42 @@ fn recovery_same_class_failure_seen(record: &crate::tlog::TlogRecord, class: &st
 fn recovery_reason_matches_class(reason: &str, class: &str) -> bool {
     let text = reason.to_ascii_lowercase();
     match class {
-        "missing_target" => text.contains("does not exist") || text.contains("missing_target"),
+        "missing_target" => recovery_reason_mentions_missing_target(&text),
         "invalid_route" => recovery_reason_mentions_invalid_route(&text),
         "llm_timeout" => recovery_reason_mentions_timeout(&text),
         "compile_error" => recovery_reason_mentions_compile_error(&text),
-        "verification_failed" => text.contains("verification"),
+        "verification_failed" => recovery_reason_mentions_verification_failure(&text),
         "projection_refresh_stalled" => recovery_reason_mentions_projection_stall(&text),
-        "invalid_schema" => text.contains("schema"),
-        "step_limit_exceeded" => text.contains("step limit") || text.contains("step budget"),
-        "checkpoint_runtime_divergence" => text.contains("checkpoint"),
-        "reaction_only" => text.contains("reaction_only") || text.contains("prose-only"),
+        "invalid_schema" => recovery_reason_mentions_invalid_schema(&text),
+        "step_limit_exceeded" => recovery_reason_mentions_step_limit(&text),
+        "checkpoint_runtime_divergence" => recovery_reason_mentions_checkpoint(&text),
+        "reaction_only" => recovery_reason_mentions_reaction_only(&text),
         _ => false,
     }
+}
+
+fn recovery_reason_mentions_missing_target(text: &str) -> bool {
+    text.contains("does not exist") || text.contains("missing_target")
+}
+
+fn recovery_reason_mentions_reaction_only(text: &str) -> bool {
+    text.contains("reaction_only") || text.contains("prose-only")
+}
+
+fn recovery_reason_mentions_verification_failure(text: &str) -> bool {
+    text.contains("verification")
+}
+
+fn recovery_reason_mentions_invalid_schema(text: &str) -> bool {
+    text.contains("schema")
+}
+
+fn recovery_reason_mentions_step_limit(text: &str) -> bool {
+    text.contains("step limit") || text.contains("step budget")
+}
+
+fn recovery_reason_mentions_checkpoint(text: &str) -> bool {
+    text.contains("checkpoint")
 }
 
 fn recovery_reason_mentions_compile_error(text: &str) -> bool {
@@ -1392,6 +1574,12 @@ fn is_successful_improvement_action(action: &str, result: &str) -> bool {
     }
     let result_lower = result.to_ascii_lowercase();
     if result_lower.contains("revert") || result_lower.contains("regressed") {
+        return false;
+    }
+    if result_lower.contains("status: failed")
+        || result_lower.contains("run_command failed")
+        || result_lower.contains("could not compile")
+    {
         return false;
     }
     result_lower.contains("apply_patch ok") || result_lower.contains("patch applied successfully")
@@ -1769,7 +1957,7 @@ mod tests {
     use super::*;
 
     fn base_eval_input() -> EvalInput {
-        EvalInput { objectives_completed: 1, objectives_total: 1, violations: ViolationsReport { status: "ok".to_string(), summary: String::new(), violations: Vec::new() }, completed_tasks: 1, total_tasks: 1, open_issues: 0, repeated_open_issues: 0, high_priority_open_issues: 0, diagnostics: empty_diagnostics_report(), semantic_fn_total: 0, semantic_fn_with_any_error: 0, semantic_fn_error_rate: 0.0, semantic_fn_intent_classified: 0, semantic_fn_low_confidence: 0, semantic_fn_intent_coverage: 1.0, semantic_fn_low_confidence_rate: 0.0, structural_invariant_coverage: StructuralInvariantCoverage { score: 1.0, ..StructuralInvariantCoverage::default() }, blocker_class_coverage: BlockerClassCoverage::default(), tlog_delta_signals: TlogDeltaSignals { score: 1.0, improvement_measurement_score: 1.0, improvement_validation_score: 1.0, improvement_effectiveness_score: 1.0, recovery_effectiveness_score: 1.0, ..TlogDeltaSignals::default() } }
+        EvalInput { objectives_completed: 1, objectives_total: 1, violations: ViolationsReport { status: "ok".to_string(), summary: String::new(), violations: Vec::new() }, completed_tasks: 1, total_tasks: 1, open_issues: 0, repeated_open_issues: 0, high_priority_open_issues: 0, diagnostics: empty_diagnostics_report(), semantic_fn_total: 0, semantic_fn_with_any_error: 0, semantic_fn_error_rate: 0.0, semantic_fn_intent_classified: 0, semantic_fn_low_confidence: 0, semantic_fn_intent_coverage: 1.0, semantic_fn_low_confidence_rate: 0.0, structural_invariant_coverage: StructuralInvariantCoverage { score: 1.0, ..StructuralInvariantCoverage::default() }, blocker_class_coverage: BlockerClassCoverage::default(), tlog_delta_signals: TlogDeltaSignals { score: 1.0, improvement_measurement_score: 1.0, improvement_validation_score: 1.0, improvement_effectiveness_score: 1.0, recovery_effectiveness_score: 1.0, repair_plan_binding_rate: 1.0, ..TlogDeltaSignals::default() } }
     }
 
     #[test]
@@ -2113,9 +2301,30 @@ mod tests {
         let signals = evaluate_tlog_delta_invariants(&records);
 
         assert_eq!(signals.artifact_lineage_orphans, 1);
+        assert_eq!(signals.artifact_lineage_orphans_new, 0);
         assert_eq!(signals.artifact_lineage_complete, 0);
         assert!(signals.orphan_artifact_ids.contains(&"(missing_artifact_id)".to_string()));
         assert!(canonical_artifact_score(&signals) < 1.0);
+    }
+
+    #[test]
+    fn eval_enforcement_fails_on_new_artifact_lineage_orphans() {
+        let mut input = base_eval_input();
+        input.tlog_delta_signals.artifact_lineage_orphans_new = 1;
+        input.tlog_delta_signals.artifact_lineage_migration_seq_boundary = 42;
+        input
+            .tlog_delta_signals
+            .orphan_artifact_ids
+            .push("artifact-missing-lineage".to_string());
+
+        let snapshot = compute_eval(&input);
+
+        assert!(!snapshot.eval_enforcement.passed);
+        assert!(snapshot
+            .eval_enforcement
+            .violations
+            .iter()
+            .any(|v| v.contains("artifact_lineage_orphans_new=1")));
     }
 
     #[test]
@@ -2143,6 +2352,49 @@ mod tests {
         assert_eq!(signals.artifact_lineage_complete, 1);
         assert_eq!(signals.artifact_lineage_orphans, 0);
         assert_eq!(canonical_artifact_score(&signals), 1.0);
+    }
+
+    #[test]
+    fn tlog_delta_invariants_count_handoff_without_ready_and_binding_rate() {
+        let records = vec![
+            crate::tlog::TlogRecord {
+                seq: 1,
+                ts_ms: 1,
+                event: Event::effect(EffectEvent::BlockerRecorded {
+                    record: crate::blockers::BlockerRecord {
+                        id: "b1".to_string(),
+                        error_class: crate::error_class::ErrorClass::PlannerHandoffWithoutReadyTasks,
+                        actor: "planner".to_string(),
+                        task_id: None,
+                        objective_id: None,
+                        summary: "H=ready/Q=0".to_string(),
+                        action_kind: "message".to_string(),
+                        source: "action_result".to_string(),
+                        ts_ms: 1,
+                    },
+                }),
+            },
+            crate::tlog::TlogRecord {
+                seq: 2,
+                ts_ms: 2,
+                event: Event::effect(EffectEvent::PlanVerifyRecorded {
+                    plan_id: "eval_metric:repair_plan_binding_rate".to_string(),
+                    plan_kind: "eval_metric".to_string(),
+                    passed: false,
+                    verify_description: "repair_plan_binding_rate = 1.0".to_string(),
+                    binding_checked: true,
+                    binding_passed: false,
+                    binding_description: "missing repair_plan_id".to_string(),
+                }),
+            },
+        ];
+
+        let signals = evaluate_tlog_delta_invariants(&records);
+
+        assert_eq!(signals.handoff_without_ready, 1);
+        assert_eq!(signals.repair_plan_binding_checks, 1);
+        assert_eq!(signals.repair_plan_binding_passed, 0);
+        assert_eq!(signals.repair_plan_binding_rate, 0.0);
     }
 
     #[test]
@@ -2357,6 +2609,10 @@ mod tests {
                 eval_enforcement_warnings: Vec::new(),
                 tlog_prompt_truncation_count: 0,
                 tlog_prompt_truncation_dropped_bytes: 0,
+                artifact_lineage_orphans_new: 0,
+                handoff_without_ready: 0,
+                repair_plan_binding_rate: 1.0,
+                artifact_lineage_migration_seq_boundary: 0,
             }),
         });
 
@@ -2500,6 +2756,10 @@ mod tests {
                     eval_enforcement_warnings: Vec::new(),
                     tlog_prompt_truncation_count: 0,
                     tlog_prompt_truncation_dropped_bytes: 0,
+                    artifact_lineage_orphans_new: 0,
+                    handoff_without_ready: 0,
+                    repair_plan_binding_rate: 1.0,
+                    artifact_lineage_migration_seq_boundary: 0,
                 }),
             },
         ];

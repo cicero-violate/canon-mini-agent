@@ -628,6 +628,14 @@ pub enum EffectEvent {
         blocker_top_uncovered: String,
         #[serde(default)]
         blocker_class_coverage: f64,
+        #[serde(default)]
+        artifact_lineage_orphans_new: usize,
+        #[serde(default)]
+        handoff_without_ready: usize,
+        #[serde(default)]
+        repair_plan_binding_rate: f64,
+        #[serde(default)]
+        artifact_lineage_migration_seq_boundary: u64,
     },
     /// Outcome of a `machine_verify` check run after an eval cycle.
     /// Emitted by `eval_driver` for every active repair plan.
@@ -638,6 +646,12 @@ pub enum EffectEvent {
         passed: bool,
         /// Human-readable form of the VerifySpec that was evaluated.
         verify_description: String,
+        #[serde(default)]
+        binding_checked: bool,
+        #[serde(default)]
+        binding_passed: bool,
+        #[serde(default)]
+        binding_description: String,
     },
     /// Last completed action snapshot used to resume after process restarts.
     PostRestartResultRecorded {

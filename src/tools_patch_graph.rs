@@ -253,7 +253,7 @@ fn format_apply_patch_action_chain(
     }
 
     if let (Some(refresh_label), Some(refresh_out)) = (refresh_label, refresh_out) {
-        let refresh_index = if test_label.is_some() { 4 } else { 3 };
+        let refresh_index = refresh_action_chain_index(test_label);
         sections.push(format_chained_action_entry(
             refresh_index,
             "run_command",
@@ -270,6 +270,10 @@ fn format_apply_patch_action_chain(
     }
 
     sections.join("\n\n")
+}
+
+fn refresh_action_chain_index(test_label: Option<&str>) -> usize {
+    if test_label.is_some() { 4 } else { 3 }
 }
 
 fn action_chain_status(label: &str) -> &'static str {

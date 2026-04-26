@@ -57,6 +57,9 @@ pub enum ErrorClass {
     /// A role was dispatched when its preconditions were not satisfied
     /// (e.g. executor dispatched with no ready tasks).
     InvalidRoute,
+    /// Planner emitted or attempted a ready executor handoff while PLAN had no
+    /// ready tasks for the executor to claim.
+    PlannerHandoffWithoutReadyTasks,
     /// The LLM explicitly emitted `message{type=blocker, status=blocked}`.
     BlockerEscalated,
     /// A `plan` operation was attempted by a role that is not permitted to use it.
@@ -86,7 +89,7 @@ pub enum ErrorClass {
 }
 
 impl ErrorClass {
-    pub const ALL: [ErrorClass; 25] = [
+    pub const ALL: [ErrorClass; 26] = [
         ErrorClass::SecondMutationPath,
         ErrorClass::RuntimeControlBypass,
         ErrorClass::UncanonicalizedRecoveryPath,
@@ -102,6 +105,7 @@ impl ErrorClass {
         ErrorClass::ReadFileStall,
         ErrorClass::ProjectionRefreshStalled,
         ErrorClass::InvalidRoute,
+        ErrorClass::PlannerHandoffWithoutReadyTasks,
         ErrorClass::BlockerEscalated,
         ErrorClass::UnauthorizedPlanOp,
         ErrorClass::VerificationFailed,
@@ -175,6 +179,10 @@ impl ErrorClass {
             ErrorClass::InvalidRoute => (
                 "invalid_route",
                 "role was dispatched when its required preconditions were not satisfied",
+            ),
+            ErrorClass::PlannerHandoffWithoutReadyTasks => (
+                "planner_handoff_without_ready_tasks",
+                "planner emitted a ready executor handoff while PLAN had no ready tasks",
             ),
             ErrorClass::BlockerEscalated => (
                 "blocker_escalated",
@@ -256,6 +264,19 @@ fn is_permission_boundary_text(text: &str) -> bool {
 
 fn is_missing_target_action_text(text: &str) -> bool {
     contains_any(text, &["not found", "no such file"])
+}
+
+fn is_planner_handoff_without_ready_tasks_text(text: &str) -> bool {
+    contains_any(
+        text,
+        &[
+            "planner_handoff_without_ready_tasks",
+            "handoff without ready",
+            "h=ready",
+            "ready handoff while plan.ready_tasks=0",
+            "ready executor handoff while plan had no ready tasks",
+        ],
+    )
 }
 
 fn is_unauthorized_plan_text(text: &str) -> bool {
@@ -418,6 +439,12 @@ fn classify_action_kind_failure(action_kind: &str, text: &str) -> Option<ErrorCl
 /// Intent: pure_transform
 /// Resource: action_payload
 fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> {
+    if let Some(class) = classify_static_gate_action_kind_failure(action_kind) {
+        return Some(class);
+    }
+    if let Some(class) = classify_static_route_action_kind_failure(action_kind) {
+        return Some(class);
+    }
     match action_kind {
         "canonical_state_bypass" => Some(ErrorClass::SecondMutationPath),
         "runtime_control_bypass" => Some(ErrorClass::RuntimeControlBypass),
@@ -426,14 +453,29 @@ fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> 
         "effectful_state_advance" => Some(ErrorClass::EffectfulStateAdvanceWithoutControlEvent),
         "ambiguous_control_event" => Some(ErrorClass::AmbiguousControlEvent),
         "plan_preflight" => Some(ErrorClass::PlanPreflightFailed),
-        "route_dispatch" | "handoff_delivery" => routed_action_failure_class(),
+        "planner_handoff_without_ready_tasks" => {
+            Some(ErrorClass::PlannerHandoffWithoutReadyTasks)
+        },
         "step_limit" => Some(ErrorClass::StepLimitExceeded),
         "livelock" => Some(ErrorClass::LivelockDetected),
         "build_gate" => Some(ErrorClass::CompileError),
-        "solo_completion_gate" | "diagnostics_evidence_gate" => verification_failed_class(),
+        _ => None,
+    }
+}
+
+fn classify_static_gate_action_kind_failure(action_kind: &str) -> Option<ErrorClass> {
+    match action_kind {
+        "solo_completion_gate" | "diagnostics_evidence_gate" => gate_verification_failure_class(),
         "reaction_only" => reaction_only_class(),
         "executor_submit_timeout" | "submit_ack_timeout" => timeout_action_failure_class(),
         "repeated_failed_action" | "idle_streak" => schema_action_failure_class(),
+        _ => None,
+    }
+}
+
+fn classify_static_route_action_kind_failure(action_kind: &str) -> Option<ErrorClass> {
+    match action_kind {
+        "route_dispatch" | "handoff_delivery" => routed_action_failure_class(),
         _ => None,
     }
 }
@@ -470,6 +512,10 @@ fn verification_failed_class() -> Option<ErrorClass> {
     Some(ErrorClass::VerificationFailed)
 }
 
+fn gate_verification_failure_class() -> Option<ErrorClass> {
+    verification_failed_class()
+}
+
 fn classify_failure_text(text: &str) -> ErrorClass {
     classify_permission_or_authorization_text(text)
         .or_else(|| classify_structural_failure_text(text))
@@ -483,6 +529,9 @@ fn classify_structural_failure_text(text: &str) -> Option<ErrorClass> {
     }
     if is_invalid_schema_text(text) {
         return Some(ErrorClass::InvalidSchema);
+    }
+    if is_planner_handoff_without_ready_tasks_text(text) {
+        return Some(ErrorClass::PlannerHandoffWithoutReadyTasks);
     }
     if is_second_mutation_text(text) {
         return Some(ErrorClass::SecondMutationPath);
@@ -548,6 +597,9 @@ fn classify_blocker_summary_match(text: &str) -> Option<ErrorClass> {
     }
     if is_projection_refresh_stalled_text(text) {
         return Some(ErrorClass::ProjectionRefreshStalled);
+    }
+    if is_planner_handoff_without_ready_tasks_text(text) {
+        return Some(ErrorClass::PlannerHandoffWithoutReadyTasks);
     }
     if contains_any(text, &["step limit", "budget", "too many steps"]) {
         return Some(ErrorClass::StepLimitExceeded);
@@ -667,6 +719,16 @@ mod tests {
     fn classify_plan_preflight_action() {
         let class = classify_result("plan_preflight", "missing symbol", false);
         assert_eq!(class, ErrorClass::PlanPreflightFailed);
+    }
+
+    #[test]
+    fn classify_planner_handoff_without_ready_tasks_action() {
+        let class = classify_result(
+            "planner_handoff_without_ready_tasks",
+            "H=ready but PLAN.ready_tasks=0; block message and replan",
+            false,
+        );
+        assert_eq!(class, ErrorClass::PlannerHandoffWithoutReadyTasks);
     }
 
     #[test]

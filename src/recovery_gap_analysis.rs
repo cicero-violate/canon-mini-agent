@@ -304,14 +304,7 @@ fn find_uncanonicalized_transition_gaps<'a>(
     edges: &[GraphEdge],
     forward: &HashMap<&str, Vec<&str>>,
 ) -> Vec<&'a GraphNode> {
-    // canonical_writer source nodes
-    let canonical_ids: Vec<&str> = nodes
-        .keys()
-        .filter(|k| {
-            nodes[*k].path.contains(CANONICAL_WRITER_PREFIX) && is_fn_node(&nodes[*k])
-        })
-        .map(|k| k.as_str())
-        .collect();
+    let canonical_ids = canonical_writer_function_ids(nodes);
 
     if canonical_ids.is_empty() {
         return Vec::new();
@@ -323,12 +316,7 @@ fn find_uncanonicalized_transition_gaps<'a>(
         canonical_reachable.extend(reachable_from(cid, forward));
     }
 
-    // Functions that are the FROM side of a TransitionsState edge (owned to avoid borrow conflict)
-    let transitions_state_fns: HashSet<String> = edges
-        .iter()
-        .filter(|e| e.relation == "TransitionsState" && !e.from.is_empty())
-        .map(|e| e.from.clone())
-        .collect();
+    let transitions_state_fns = transitions_state_function_ids(edges);
 
     let mut gaps = Vec::new();
     for nid in &transitions_state_fns {
@@ -347,6 +335,22 @@ fn find_uncanonicalized_transition_gaps<'a>(
         gaps.push(node);
     }
     gaps
+}
+
+fn canonical_writer_function_ids(nodes: &HashMap<String, GraphNode>) -> Vec<&str> {
+    nodes
+        .iter()
+        .filter(|(_, node)| node.path.contains(CANONICAL_WRITER_PREFIX) && is_fn_node(node))
+        .map(|(id, _)| id.as_str())
+        .collect()
+}
+
+fn transitions_state_function_ids(edges: &[GraphEdge]) -> HashSet<String> {
+    edges
+        .iter()
+        .filter(|edge| edge.relation == "TransitionsState" && !edge.from.is_empty())
+        .map(|edge| edge.from.clone())
+        .collect()
 }
 
 // ── Gap → BlockerRecord ───────────────────────────────────────────────────────

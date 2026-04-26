@@ -327,17 +327,7 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
 
     let counts = summarize_invariant_status_counts(&file.invariants);
 
-    let mut ranked: Vec<&crate::invariants::DiscoveredInvariant> = file
-        .invariants
-        .iter()
-        .filter(|inv| inv.status != crate::invariants::InvariantStatus::Collapsed)
-        .collect();
-    ranked.sort_by(|a, b| {
-        invariant_status_rank(&a.status)
-            .cmp(&invariant_status_rank(&b.status))
-            .then_with(|| b.support_count.cmp(&a.support_count))
-            .then_with(|| a.id.cmp(&b.id))
-    });
+    let ranked = ranked_active_invariants_for_prompt(&file.invariants);
 
     let mut out = String::new();
     out.push_str(&format!(
@@ -388,6 +378,22 @@ The invariants action only supports lifecycle ops on existing entries: read, pro
     );
     out.push_str("\nFull detail: {\"action\":\"invariants\",\"op\":\"read\"}");
     out
+}
+
+fn ranked_active_invariants_for_prompt(
+    invariants: &[crate::invariants::DiscoveredInvariant],
+) -> Vec<&crate::invariants::DiscoveredInvariant> {
+    let mut ranked: Vec<&crate::invariants::DiscoveredInvariant> = invariants
+        .iter()
+        .filter(|inv| inv.status != crate::invariants::InvariantStatus::Collapsed)
+        .collect();
+    ranked.sort_by(|a, b| {
+        invariant_status_rank(&a.status)
+            .cmp(&invariant_status_rank(&b.status))
+            .then_with(|| b.support_count.cmp(&a.support_count))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    ranked
 }
 
 struct InvariantStatusCounts {
@@ -534,7 +540,8 @@ semantic_low_confidence={semantic_fn_low_confidence}({semantic_fn_low_confidence
 eval_gate={eval_gate}  violations={eval_violations}  warnings={eval_warnings}  \
 prompt_truncations={prompt_truncations}  truncation_dropped={truncation_dropped}B  \
 blocker_coverage={blocker_class_coverage:.3}  blocker_classes={blocker_distinct}  top_uncovered={blocker_top_uncovered}\n\
-artifact_lineage=complete:{artifact_lineage_complete} orphan:{artifact_lineage_orphans} ids={orphan_artifact_ids}\n\
+artifact_lineage=complete:{artifact_lineage_complete} orphan:{artifact_lineage_orphans} new_orphan:{artifact_lineage_orphans_new} migration_seq:{artifact_lineage_migration_seq_boundary} ids={orphan_artifact_ids}\n\
+handoff_without_ready={handoff_without_ready}  repair_plan_binding_rate={repair_plan_binding_rate:.3}\n\
 lag_action={lag_kind}({lag_ms}ms)  payload={payload_kind}({payload_bytes}B)  \
 plan_payload={plan_payload_bytes}B  measured_improvements={measured}/{attempts}  \
 unmeasured={unmeasured}  validated_improvements={validated}/{attempts}  \
@@ -569,6 +576,10 @@ recovery_suppressed={recovery_suppressed}\n\
         blocker_top_uncovered = get_str("blocker_top_uncovered"),
         artifact_lineage_complete = get_u64("artifact_lineage_complete"),
         artifact_lineage_orphans = get_u64("artifact_lineage_orphans"),
+        artifact_lineage_orphans_new = get_u64("artifact_lineage_orphans_new"),
+        artifact_lineage_migration_seq_boundary = get_u64("artifact_lineage_migration_seq_boundary"),
+        handoff_without_ready = get_u64("handoff_without_ready"),
+        repair_plan_binding_rate = get_f64_or("repair_plan_binding_rate", 1.0),
         orphan_artifact_ids = eval
             .get("orphan_artifact_ids")
             .and_then(|v| v.as_array())
@@ -761,13 +772,7 @@ fn build_plan_verify_summary(workspace: &Path) -> String {
             .map(|s| s.as_str())
             .collect();
         if !verified_ids.is_empty() {
-            lines.push(format!(
-                "○ OBJECTIVE {}: {}/{} repair plans verified ({})",
-                obj.id,
-                verified_ids.len(),
-                obj.repair_plan_ids.len(),
-                verified_ids.join(", ")
-            ));
+            lines.push(format_objective_repair_plan_verify_summary(obj, &verified_ids));
         }
     }
 
@@ -775,6 +780,19 @@ fn build_plan_verify_summary(workspace: &Path) -> String {
         return String::new();
     }
     format!("Plan verify outcomes:\n{}", lines.join("\n"))
+}
+
+fn format_objective_repair_plan_verify_summary(
+    obj: &crate::objectives::Objective,
+    verified_ids: &[&str],
+) -> String {
+    format!(
+        "○ OBJECTIVE {}: {}/{} repair plans verified ({})",
+        obj.id,
+        verified_ids.len(),
+        obj.repair_plan_ids.len(),
+        verified_ids.join(", ")
+    )
 }
 
 fn eval_score_directive(weakest_name: &str) -> &'static str {
@@ -944,20 +962,8 @@ fn summarize_ranked_open_issues_for_prompt(open_issues: &[Issue], limit: usize) 
     let location_max_len = 80usize;
     let byte_budget = 4096usize;
     for issue in open_issues.iter().take(limit.max(1)) {
-        let title = issue.title.trim();
-        let truncated_title = if title.len() > title_max_len {
-            format!("{}…", &title[..title_max_len])
-        } else {
-            title.to_string()
-        };
-        let location = issue.location.trim();
-        let truncated_location = if location.is_empty() {
-            String::new()
-        } else if location.len() > location_max_len {
-            format!("{}…", &location[..location_max_len])
-        } else {
-            location.to_string()
-        };
+        let truncated_title = truncate_issue_prompt_field(issue.title.trim(), title_max_len);
+        let truncated_location = truncate_issue_prompt_field(issue.location.trim(), location_max_len);
         let loc = if truncated_location.is_empty() {
             String::new()
         } else {
@@ -974,6 +980,16 @@ fn summarize_ranked_open_issues_for_prompt(open_issues: &[Issue], limit: usize) 
         out.push_str(&line);
     }
     out
+}
+
+fn truncate_issue_prompt_field(value: &str, max_len: usize) -> String {
+    if value.is_empty() {
+        String::new()
+    } else if value.len() > max_len {
+        format!("{}…", &value[..max_len])
+    } else {
+        value.to_string()
+    }
 }
 
 /// Intent: pure_transform
@@ -1124,13 +1140,12 @@ fn render_diagnostics_report_from_state(
     let has_high_issues = ranked_failures
         .iter()
         .any(|finding| matches!(finding.impact.clone(), Impact::Critical | Impact::High));
-    let status = if ranked_failures.is_empty() && is_verified_empty {
-        "verified"
-    } else if has_active_violations || has_high_issues {
-        "critical_failure"
-    } else {
-        "needs_repair"
-    };
+    let status = diagnostics_report_status(
+        ranked_failures.is_empty(),
+        is_verified_empty,
+        has_active_violations,
+        has_high_issues,
+    );
 
     let inputs_scanned = vec![
         format!("{} (open issues: {})", ISSUES_FILE, open_issues.len()),
@@ -1174,6 +1189,21 @@ fn render_diagnostics_report_from_state(
             status
         )
     })
+}
+
+fn diagnostics_report_status(
+    no_ranked_failures: bool,
+    is_verified_empty: bool,
+    has_active_violations: bool,
+    has_high_issues: bool,
+) -> &'static str {
+    if no_ranked_failures && is_verified_empty {
+        "verified"
+    } else if has_active_violations || has_high_issues {
+        "critical_failure"
+    } else {
+        "needs_repair"
+    }
 }
 
 pub fn derive_semantic_prompt_artifacts(
@@ -1556,10 +1586,7 @@ fn render_lessons_list(title: &str, items: &[LessonEntry]) -> Option<String> {
 /// Provenance: rustc:facts + rustc:docstring
 fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
     let mut sections = Vec::new();
-    let summary = artifact.summary.trim();
-    if !summary.is_empty() {
-        sections.push(format!("Summary:\n{summary}"));
-    }
+    append_lesson_summary_section(&mut sections, &artifact.summary);
     if let Some(section) = render_lessons_list("Failures", &artifact.failures) {
         sections.push(section);
     }
@@ -1570,6 +1597,13 @@ fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
         sections.push(section);
     }
     sections.join("\n\n")
+}
+
+fn append_lesson_summary_section(sections: &mut Vec<String>, summary: &str) {
+    let summary = summary.trim();
+    if !summary.is_empty() {
+        sections.push(format!("Summary:\n{summary}"));
+    }
 }
 
 /// Intent: canonical_read
@@ -1584,16 +1618,20 @@ fn render_lessons_artifact(artifact: &LessonsArtifact) -> String {
 pub fn read_lessons_or_empty(workspace: &Path) -> String {
     let raw = read_text_or_empty(workspace.join(LESSONS_FILE));
     if !raw.trim().is_empty() {
-        return match serde_json::from_str::<LessonsArtifact>(&raw) {
-            Ok(artifact) => render_lessons_artifact(&artifact),
-            Err(_) => raw,
-        };
+        return render_raw_lessons_or_original(raw);
     }
     let artifact = crate::lessons::load_lessons_artifact(workspace);
     if artifact == LessonsArtifact::default() {
         return String::new();
     }
     render_lessons_artifact(&artifact)
+}
+
+fn render_raw_lessons_or_original(raw: String) -> String {
+    match serde_json::from_str::<LessonsArtifact>(&raw) {
+        Ok(artifact) => render_lessons_artifact(&artifact),
+        Err(_) => raw,
+    }
 }
 
 #[cfg(test)]
@@ -2357,11 +2395,19 @@ pub fn build_single_role_prompt(
     inputs: &SingleRoleInputs,
     cargo_test_failures: &str,
 ) -> Result<String> {
-    let prompt = match inputs.prompt_kind {
-        AgentPromptKind::Planner => build_planner_role_prompt(ctx, inputs, cargo_test_failures)?,
-        AgentPromptKind::Executor => build_executor_role_prompt(ctx)?,
-    };
+    let prompt = build_single_role_prompt_for_kind(ctx, inputs, cargo_test_failures)?;
     Ok(prompt)
+}
+
+fn build_single_role_prompt_for_kind(
+    ctx: &SingleRoleContext<'_>,
+    inputs: &SingleRoleInputs,
+    cargo_test_failures: &str,
+) -> Result<String> {
+    match inputs.prompt_kind {
+        AgentPromptKind::Planner => build_planner_role_prompt(ctx, inputs, cargo_test_failures),
+        AgentPromptKind::Executor => build_executor_role_prompt(ctx),
+    }
 }
 
 /// Intent: pure_transform

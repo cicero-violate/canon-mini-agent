@@ -1066,38 +1066,39 @@ pub fn write_projection_with_artifact_effects(
     let signature = artifact_write_signature(&[artifact, op, subject, &content_hash]);
     let target = path.to_string_lossy().into_owned();
     let artifact_id = workspace_artifact_id(artifact, &target, subject, &content_hash);
-    record_workspace_artifact_effect_with_id(
-        workspace,
-        true,
-        &artifact_id,
-        artifact,
-        op,
-        &target,
-        subject,
-        &signature,
-    )?;
+    record_projection_artifact_effect(workspace, true, &artifact_id, artifact, op, &target, subject, &signature)?;
     let snapshot = file_snapshot(path)?;
+    write_projection_contents(path, contents)?;
+    if let Err(err) = record_projection_artifact_effect(workspace, false, &artifact_id, artifact, op, &target, subject, &signature) {
+        restore_file_snapshot(path, &snapshot)?;
+        return Err(err);
+    }
+    Ok(())
+}
+
+fn write_projection_contents(path: &std::path::Path, contents: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).with_context(|| format!("mkdir {}", parent.display()))?;
     }
     let tmp_path = path.with_extension("tmp");
     std::fs::write(&tmp_path, contents).with_context(|| format!("write {}", tmp_path.display()))?;
     std::fs::rename(&tmp_path, path)
-        .with_context(|| format!("rename {} -> {}", tmp_path.display(), path.display()))?;
-    if let Err(err) = record_workspace_artifact_effect_with_id(
-        workspace,
-        false,
-        &artifact_id,
-        artifact,
-        op,
-        &target,
-        subject,
-        &signature,
-    ) {
-        restore_file_snapshot(path, &snapshot)?;
-        return Err(err);
-    }
-    Ok(())
+        .with_context(|| format!("rename {} -> {}", tmp_path.display(), path.display()))
+}
+
+fn record_projection_artifact_effect(
+    workspace: &std::path::Path,
+    requested: bool,
+    artifact_id: &str,
+    artifact: &str,
+    op: &str,
+    target: &str,
+    subject: &str,
+    signature: &str,
+) -> Result<()> {
+    record_workspace_artifact_effect_with_id(
+        workspace, requested, artifact_id, artifact, op, target, subject, signature,
+    )
 }
 
 pub fn record_json_projection_with_optional_writer<T: Serialize>(

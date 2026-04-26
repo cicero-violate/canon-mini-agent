@@ -1359,6 +1359,32 @@ fn seed_graph_risk_structural_invariants(
         }],
         vec!["executor".to_string()],
     );
+
+    upsert_deterministic_invariant(
+        file,
+        "inv_structural_plan_mutation_tool_gate",
+        graph_text.contains("plan") && graph_text.contains("repair_plan_id"),
+        now_ms,
+        "Plan mutations must go through the plan tool so repair plan bindings remain machine-verifiable.",
+        vec![StateCondition {
+            key: "structural_invariant".to_string(),
+            value: "plan_mutation_goes_through_plan_tool".to_string(),
+        }],
+        vec!["planner".to_string()],
+    );
+
+    upsert_deterministic_invariant(
+        file,
+        "inv_structural_issues_projection_only",
+        graph_text.contains("issues_projection") || graph_text.contains("issues.json"),
+        now_ms,
+        "Issue projection updates must be generated from canonical projections rather than edited as primary state.",
+        vec![StateCondition {
+            key: "structural_invariant".to_string(),
+            value: "issues_projection_only".to_string(),
+        }],
+        vec!["planner".to_string(), "executor".to_string()],
+    );
 }
 
 fn repeated_support_fingerprints(fp: Fingerprint) -> Vec<Fingerprint> {
@@ -1495,8 +1521,10 @@ fn append_graph_risk_fingerprint(
     )));
 }
 
+/// Intent: canonical_read
+/// Resource: INVARIANTS.json
 fn fingerprints_from_tlog_invariant_lifecycle_gap(workspace: &Path) -> Vec<Fingerprint> {
-    let tlog_path = workspace.join("agent_state").join("tlog.ndjson");
+    let tlog_path = tlog_ndjson_path(workspace);
     let Ok(file) = std::fs::File::open(&tlog_path) else {
         return Vec::new();
     };
@@ -1506,6 +1534,10 @@ fn fingerprints_from_tlog_invariant_lifecycle_gap(workspace: &Path) -> Vec<Finge
     }
 
     repeated_support_fingerprints(build_tlog_invariant_lifecycle_gap_fingerprint(counts))
+}
+
+fn tlog_ndjson_path(workspace: &Path) -> std::path::PathBuf {
+    workspace.join("agent_state").join("tlog.ndjson")
 }
 
 struct TlogInvariantLifecycleGapCounts {
@@ -1648,17 +1680,32 @@ fn fingerprints_from_blockers(workspace: &Path) -> Vec<Fingerprint> {
                 "ts_ms": b.ts_ms,
             });
             let actor_kind = actor_kind_from_role(&b.actor);
+            let mut conditions = vec![
+                crate::invariants::StateCondition {
+                    key: "actor_kind".to_string(),
+                    value: actor_kind.to_string(),
+                },
+                crate::invariants::StateCondition {
+                    key: "error_class".to_string(),
+                    value: b.error_class.as_key().to_string(),
+                },
+            ];
+            if b.error_class == ErrorClass::PlanPreflightFailed {
+                conditions.push(crate::invariants::StateCondition {
+                    key: "failure_class".to_string(),
+                    value: "plan_preflight_failed".to_string(),
+                });
+                conditions.push(crate::invariants::StateCondition {
+                    key: "recovery_policy".to_string(),
+                    value: "clear_executor_and_wake_planner".to_string(),
+                });
+                conditions.push(crate::invariants::StateCondition {
+                    key: "repair_plan_id".to_string(),
+                    value: "blocker_class:plan_preflight_failed".to_string(),
+                });
+            }
             Fingerprint {
-                conditions: vec![
-                    crate::invariants::StateCondition {
-                        key: "actor_kind".to_string(),
-                        value: actor_kind.to_string(),
-                    },
-                    crate::invariants::StateCondition {
-                        key: "error_class".to_string(),
-                        value: b.error_class.as_key().to_string(),
-                    },
-                ],
+                conditions,
                 predicate_text: format!(
                     "Role `{actor_kind}` repeatedly encounters `{}`: {}",
                     b.error_class.as_key(),
@@ -2015,9 +2062,7 @@ fn extract_missing_target_fingerprint(
     text: &str,
     ts_ms: u64,
 ) -> Option<Fingerprint> {
-    let missing_target = text.contains("missing_target")
-        || (text.contains("does not exist") && phase == "result" && !ok);
-    if !missing_target {
+    if !is_missing_target_failure_text(text, phase, ok) {
         return None;
     }
 
@@ -2035,6 +2080,10 @@ fn extract_missing_target_fingerprint(
         ts_ms,
         evidence: failure_evidence_sample(entry, ts_ms),
     })
+}
+
+fn is_missing_target_failure_text(text: &str, phase: &str, ok: bool) -> bool {
+    text.contains("missing_target") || (text.contains("does not exist") && phase == "result" && !ok)
 }
 
 fn failure_evidence_sample(entry: &Value, ts_ms: u64) -> InvariantEvidenceSample {
@@ -2463,15 +2512,15 @@ fn invariants_path(workspace: &Path) -> std::path::PathBuf {
 /// Failure: error
 /// Provenance: rustc:facts + rustc:docstring
 pub fn load_enforced_invariants_file(workspace: &Path) -> EnforcedInvariantsFile {
-    if let Some(file) = load_invariants_from_tlog(workspace) {
-        return normalize_loaded_invariants(file);
-    }
     let path = invariants_path(workspace);
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     if !raw.trim().is_empty() {
         if let Ok(file) = serde_json::from_str::<EnforcedInvariantsFile>(&raw) {
             return normalize_loaded_invariants(file);
         }
+    }
+    if let Some(file) = load_invariants_from_tlog(workspace) {
+        return normalize_loaded_invariants(file);
     }
     EnforcedInvariantsFile {
         version: 1,

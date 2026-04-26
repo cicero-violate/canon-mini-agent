@@ -936,14 +936,23 @@ pub fn dead_impl_issues(
     if impl_edges.is_empty() {
         return Vec::new();
     }
+    let out = build_dead_impl_issues(crate_name, &triples, impl_edges);
+    sorted_limited_issues(out, limit)
+}
+
+fn build_dead_impl_issues(
+    crate_name: &str,
+    triples: &[crate::semantic::SemanticTriple],
+    impl_edges: Vec<(String, String)>,
+) -> Vec<Issue> {
     let mut out = Vec::new();
     for (implementer, trait_symbol) in impl_edges {
-        if trait_has_dispatch_usage(&triples, &trait_symbol) {
+        if trait_has_dispatch_usage(triples, &trait_symbol) {
             continue;
         }
         out.push(dead_impl_issue(crate_name, &implementer, &trait_symbol));
     }
-    sorted_limited_issues(out, limit)
+    out
 }
 
 fn implementation_edges(triples: &[crate::semantic::SemanticTriple]) -> Vec<(String, String)> {
@@ -1576,9 +1585,7 @@ fn build_redundant_path_issue(
 ) -> Issue {
     let location = shorten_location(&summary.file, summary.line);
     let id_seed = format!("{owner}:{shared_signature:016x}");
-    let avg_path_len = (pair.path_a.blocks.len() + pair.path_b.blocks.len()) as f64 / 2.0;
-    let blocks = summary.mir_blocks.unwrap_or(0).max(1);
-    let redundancy_ratio = avg_path_len / blocks as f64;
+    let redundancy_ratio = redundant_path_ratio(summary, pair);
     Issue {
         id: format!(
             "auto_redundant_path_{crate_name}_{:x}",
@@ -1619,6 +1626,12 @@ fn build_redundant_path_issue(
         discovered_by: "refactor_analyzer".to_string(),
         ..Issue::default()
     }
+}
+
+fn redundant_path_ratio(summary: &SymbolSummary, pair: &crate::semantic::RedundantPathPair) -> f64 {
+    let avg_path_len = (pair.path_a.blocks.len() + pair.path_b.blocks.len()) as f64 / 2.0;
+    let blocks = summary.mir_blocks.unwrap_or(0).max(1);
+    avg_path_len / blocks as f64
 }
 
 fn redundant_path_summary_by_key<'a>(

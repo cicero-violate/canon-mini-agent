@@ -486,11 +486,7 @@ fn build_recursive_issue(
         id,
         title: format!("Direct recursion detected: {short}"),
         status: "open".to_string(),
-        priority: if entry.branch_score >= 10.0 {
-            "high".to_string()
-        } else {
-            "medium".to_string()
-        },
+        priority: recursive_issue_priority(entry.branch_score).to_string(),
         kind: "performance".to_string(),
         description: format!(
             "`{}` calls itself directly (branch_score={:.1}, call_in={}).\n\
@@ -509,6 +505,14 @@ fn build_recursive_issue(
         score: 0.0,
         ..Issue::default()
     })
+}
+
+fn recursive_issue_priority(branch_score: f64) -> &'static str {
+    if branch_score >= 10.0 {
+        "high"
+    } else {
+        "medium"
+    }
 }
 
 /// Intent: pure_transform

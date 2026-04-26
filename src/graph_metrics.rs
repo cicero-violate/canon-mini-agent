@@ -396,14 +396,7 @@ fn resolve_stale_artifact_writer_dispersion_issues(
 pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
-    let mut mutated = 0usize;
-
-    for crate_name in SemanticIndex::available_crates(workspace) {
-        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
-            continue;
-        };
-        mutated += sync_error_shaping_dispersion_issue_for_crate(&mut file, &crate_name, &idx);
-    }
+    let mutated = sync_error_shaping_dispersion_issues_for_available_crates(workspace, &mut file);
 
     finalize_issue_file(
         workspace,
@@ -413,6 +406,20 @@ pub fn generate_error_shaping_dispersion_issues(workspace: &Path) -> Result<usiz
     )?;
 
     Ok(mutated)
+}
+
+fn sync_error_shaping_dispersion_issues_for_available_crates(
+    workspace: &Path,
+    file: &mut IssuesFile,
+) -> usize {
+    let mut mutated = 0usize;
+    for crate_name in SemanticIndex::available_crates(workspace) {
+        let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
+            continue;
+        };
+        mutated += sync_error_shaping_dispersion_issue_for_crate(file, &crate_name, &idx);
+    }
+    mutated
 }
 
 fn sync_error_shaping_dispersion_issue_for_crate(
@@ -681,17 +688,23 @@ fn upsert_implicit_state_machine_issues(
             continue;
         };
         let branch_score = summary.branch_score.unwrap_or(0.0);
-        let workflow_like = implicit_state_machine_candidate_symbol(&summary.symbol);
-        let state_count = state_domains.len();
-        let qualifies = workflow_like
-            && branch_score >= 4.0
-            && (summary.has_back_edges || summary.switchint_count >= 2 || state_count >= 2);
+        let qualifies = implicit_state_machine_summary_qualifies(&summary, state_domains, branch_score);
         let issue = build_implicit_state_machine_issue(crate_name, &summary, state_domains);
         desired_ids.insert(issue.id.clone());
         mutated += upsert_bridge_issue(file, issue, qualifies);
     }
 
     (desired_ids, mutated)
+}
+
+fn implicit_state_machine_summary_qualifies(
+    summary: &crate::semantic::SymbolSummary,
+    state_domains: &HashSet<String>,
+    branch_score: f64,
+) -> bool {
+    implicit_state_machine_candidate_symbol(&summary.symbol)
+        && branch_score >= 4.0
+        && (summary.has_back_edges || summary.switchint_count >= 2 || state_domains.len() >= 2)
 }
 
 /// Intent: diagnostic_scan
@@ -938,19 +951,27 @@ fn generate_effect_dispersion_issues(
 ) -> Result<usize> {
     let mut file: IssuesFile = load_issues_file(workspace);
     let before = serde_json::to_value(&file)?;
-    let mut mutated = 0usize;
+    let mutated = sync_effect_dispersion_issues_for_all_crates(workspace, &mut file, mode);
 
+    finalize_issue_file(workspace, &mut file, before, mode.persist_label())?;
+
+    Ok(mutated)
+}
+
+fn sync_effect_dispersion_issues_for_all_crates(
+    workspace: &Path,
+    file: &mut IssuesFile,
+    mode: EffectDispersionMode,
+) -> usize {
+    let mut mutated = 0usize;
     for crate_name in SemanticIndex::available_crates(workspace) {
         let Ok(idx) = SemanticIndex::load(workspace, &crate_name) else {
             continue;
         };
         let crate_name = crate_name.replace('-', "_");
-        mutated += sync_effect_dispersion_issue_for_crate(&mut file, &crate_name, &idx, mode);
+        mutated += sync_effect_dispersion_issue_for_crate(file, &crate_name, &idx, mode);
     }
-
-    finalize_issue_file(workspace, &mut file, before, mode.persist_label())?;
-
-    Ok(mutated)
+    mutated
 }
 
 fn finalize_issue_file(
@@ -2352,19 +2373,8 @@ fn build_effect_boundary_leak_issue(
     rows: &[(String, Vec<&'static str>)],
 ) -> Issue {
     let canonical_target = "logging / canonical_writer / app orchestration boundary";
-    let evidence = rows
-        .iter()
-        .map(|(symbol, effects)| format!("`{symbol}` directly performs [{}]", effects.join(", ")))
-        .collect::<Vec<_>>();
-    let symbol_metrics = rows
-        .iter()
-        .map(|(symbol, effects)| {
-            json!({
-                "symbol": symbol,
-                "effects": effects,
-            })
-        })
-        .collect::<Vec<_>>();
+    let evidence = effect_boundary_leak_evidence(rows);
+    let symbol_metrics = effect_boundary_leak_symbol_metrics(rows);
 
     Issue {
         id: effect_boundary_leak_issue_id(crate_name, module),
@@ -2400,6 +2410,23 @@ fn build_effect_boundary_leak_issue(
         discovered_by: "graph_metrics_detector".to_string(),
         ..Issue::default()
     }
+}
+
+fn effect_boundary_leak_evidence(rows: &[(String, Vec<&'static str>)]) -> Vec<String> {
+    rows.iter()
+        .map(|(symbol, effects)| format!("`{symbol}` directly performs [{}]", effects.join(", ")))
+        .collect()
+}
+
+fn effect_boundary_leak_symbol_metrics(rows: &[(String, Vec<&'static str>)]) -> Vec<Value> {
+    rows.iter()
+        .map(|(symbol, effects)| {
+            json!({
+                "symbol": symbol,
+                "effects": effects,
+            })
+        })
+        .collect()
 }
 
 /// Intent: pure_transform
@@ -2523,11 +2550,7 @@ fn build_scc_region_reduction_issue(
         id: scc_region_reduction_issue_id(crate_name, &summary.symbol),
         title: format!("SCC region reduction candidate in `{}`", summary.symbol),
         status: "open".to_string(),
-        priority: if back_edge_count >= 2 || redundant_path_count >= 2 {
-            "high".to_string()
-        } else {
-            "medium".to_string()
-        },
+        priority: scc_region_reduction_priority(back_edge_count, redundant_path_count).to_string(),
         kind: "logic".to_string(),
         description: format!(
             "Function `{}` in crate `{}` contains a loop-heavy SCC control region. \
@@ -2557,6 +2580,14 @@ fn build_scc_region_reduction_issue(
         evidence,
         discovered_by: "graph_metrics_detector".to_string(),
         ..Issue::default()
+    }
+}
+
+fn scc_region_reduction_priority(back_edge_count: usize, redundant_path_count: usize) -> &'static str {
+    if back_edge_count >= 2 || redundant_path_count >= 2 {
+        "high"
+    } else {
+        "medium"
     }
 }
 

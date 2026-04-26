@@ -164,6 +164,24 @@ pub(super) async fn run_planner_phase(
             let lane_ids: Vec<usize> = ctx.lanes.iter().map(|l| l.index).collect();
             let ready_tasks_exist =
                 crate::prompt_inputs::read_ready_tasks(ctx.workspace, 1) != "(no ready tasks)";
+            if matches!(
+                classify_planner_action_result_class(&result),
+                PlannerActionResultClass::ReadyHandoff
+            ) && !ready_tasks_exist
+            {
+                let reason = "planner_handoff_without_ready_tasks: planner emitted ready handoff but preflight found PLAN.ready_tasks=0; enforcing H=ready ⇒ Q>0 by blocking executor and re-running planner";
+                crate::blockers::record_action_failure_with_writer(
+                    ctx.workspace,
+                    Some(&mut *writer),
+                    "planner",
+                    "planner_handoff_without_ready_tasks",
+                    reason,
+                    None,
+                );
+                writer.apply(ControlEvent::PlannerPendingSet { pending: true });
+                apply_scheduled_phase_if_changed(writer, Some("planner"));
+                return true;
+            }
             let mut executor_handoff_queued = false;
             for lane_id in lane_ids {
                 let lane_plan_already_empty = writer

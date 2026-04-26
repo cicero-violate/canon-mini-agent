@@ -677,13 +677,7 @@ pub fn is_closed(issue: &Issue) -> bool {
 /// Provenance: rustc:facts + rustc:docstring
 pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
     // Severity from priority string
-    let severity: f32 = match issue.priority.trim().to_lowercase().as_str() {
-        "critical" => 1.0,
-        "high" => 0.75,
-        "medium" => 0.5,
-        "low" => 0.25,
-        _ => 0.5,
-    };
+    let severity = issue_priority_severity(&issue.priority);
 
     // Recurrence: count other issues that share the same leading token in their ID.
     // IDs using hyphens as separators (e.g. "ISS-DUP-1" and "ISS-DUP-2") are siblings.
@@ -768,6 +762,16 @@ pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
         .unwrap_or(0.0);
     let score = base_score + 0.12 * detector_signal;
     score.clamp(0.0, 1.0)
+}
+
+fn issue_priority_severity(priority: &str) -> f32 {
+    match priority.trim().to_lowercase().as_str() {
+        "critical" => 1.0,
+        "high" => 0.75,
+        "medium" => 0.5,
+        "low" => 0.25,
+        _ => 0.5,
+    }
 }
 
 /// Recompute scores for every issue in the file.

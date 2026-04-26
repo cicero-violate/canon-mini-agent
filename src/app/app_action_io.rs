@@ -59,16 +59,35 @@ fn build_guardrail_message_envelope(
 ) -> Value {
     let observation = guardrail_wrapped_message_observation();
     let rationale = guardrail_wrapped_message_rationale();
+    let route = guardrail_message_route(from, to, msg_type, status);
+    guardrail_message_envelope_json(route, observation, rationale, payload)
+}
+
+fn guardrail_message_envelope_json(
+    route: (&str, &str, &str, &str),
+    observation: &str,
+    rationale: &str,
+    payload: Value,
+) -> Value {
     json!({
         "action": "message",
-        "from": from,
-        "to": to,
-        "type": msg_type,
-        "status": status,
+        "from": route.0,
+        "to": route.1,
+        "type": route.2,
+        "status": route.3,
         "observation": observation,
         "rationale": rationale,
         "payload": payload
     })
+}
+
+fn guardrail_message_route<'a>(
+    from: &'a str,
+    to: &'a str,
+    msg_type: &'a str,
+    status: &'a str,
+) -> (&'a str, &'a str, &'a str, &'a str) {
+    (from, to, msg_type, status)
 }
 
 fn guardrail_wrapped_message_observation() -> &'static str {
@@ -482,32 +501,60 @@ pub(super) fn build_agent_prompt(
             format!("{header}{initial_prompt}"),
         )
     } else {
-        let result = last_result.unwrap_or("").to_string();
-        let role_schema = if send_system_prompt {
-            system_instructions.to_string()
-        } else {
-            String::new()
-        };
-        (
-            role_schema,
-            action_result_prompt(
-                last_tab_id,
-                last_turn_id,
-                agent_type.as_str(),
-                &result,
-                last_action,
-                last_provenance.task_id.as_deref(),
-                last_provenance.objective_id.as_deref(),
-                last_provenance.intent.as_deref(),
-                if role.starts_with("executor") {
-                    Some(total_steps)
-                } else {
-                    None
-                },
-                last_predicted_next_actions,
-            ),
+        build_followup_agent_prompt(
+            role,
+            send_system_prompt,
+            system_instructions,
+            last_result,
+            last_tab_id,
+            last_turn_id,
+            agent_type.as_str(),
+            last_action,
+            last_provenance,
+            total_steps,
+            last_predicted_next_actions,
         )
     }
+}
+
+fn build_followup_agent_prompt(
+    role: &str,
+    send_system_prompt: bool,
+    system_instructions: &str,
+    last_result: Option<&str>,
+    last_tab_id: Option<u32>,
+    last_turn_id: Option<u64>,
+    agent_type: &str,
+    last_action: Option<&str>,
+    last_provenance: &ActionProvenance,
+    total_steps: usize,
+    last_predicted_next_actions: Option<&str>,
+) -> (String, String) {
+    let result = last_result.unwrap_or("").to_string();
+    let role_schema = if send_system_prompt {
+        system_instructions.to_string()
+    } else {
+        String::new()
+    };
+    (
+        role_schema,
+        action_result_prompt(
+            last_tab_id,
+            last_turn_id,
+            agent_type,
+            &result,
+            last_action,
+            last_provenance.task_id.as_deref(),
+            last_provenance.objective_id.as_deref(),
+            last_provenance.intent.as_deref(),
+            if role.starts_with("executor") {
+                Some(total_steps)
+            } else {
+                None
+            },
+            last_predicted_next_actions,
+        ),
+    )
 }
 
 pub(super) fn should_send_system_prompt(

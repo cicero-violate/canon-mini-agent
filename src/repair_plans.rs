@@ -33,6 +33,8 @@ pub enum VerifySpec {
     ScoreImproves { metric: &'static str, from: f64 },
     /// String field `key` in eval map does not equal `value`.
     FieldNotEquals { key: &'static str, value: String },
+    /// Integer field `key` in eval map equals `value`.
+    FieldEqualsU64 { key: &'static str, value: u64 },
     /// The named invariant has status=enforced or status=collapsed.
     InvariantResolved { id: String },
     /// All sub-specs must pass.
@@ -52,6 +54,9 @@ impl VerifySpec {
             Self::FieldNotEquals { key, value } => {
                 eval.get(*key).and_then(|v| v.as_str()).unwrap_or("") != value.as_str()
             }
+            Self::FieldEqualsU64 { key, value } => {
+                eval.get(*key).and_then(|v| v.as_u64()).unwrap_or(u64::MAX) == *value
+            }
             Self::InvariantResolved { id } => invariant_resolved(invariant_text, id),
             Self::All(specs) => specs.iter().all(|s| s.check(eval, invariant_text)),
         }
@@ -60,18 +65,11 @@ impl VerifySpec {
     /// Human-readable description used in the rendered REPAIR_PLAN block.
     pub fn description(&self) -> String {
         match self {
-            Self::ScoreAbove { metric, threshold } => {
-                format!("{metric} >= {threshold:.3}")
-            }
-            Self::ScoreImproves { metric, from } => {
-                format!("{metric} > {from:.3}")
-            }
-            Self::FieldNotEquals { key, value } => {
-                format!("{key} != \"{value}\"")
-            }
-            Self::InvariantResolved { id } => {
-                format!("{id} status in {{enforced, collapsed}}")
-            }
+            Self::ScoreAbove { metric, threshold } => format_metric_threshold(metric, ">=", *threshold),
+            Self::ScoreImproves { metric, from } => format_metric_threshold(metric, ">", *from),
+            Self::FieldNotEquals { key, value } => format_field_not_equals(key, value),
+            Self::FieldEqualsU64 { key, value } => format_field_equals_u64(key, *value),
+            Self::InvariantResolved { id } => format_invariant_resolved_description(id),
             Self::All(specs) => specs
                 .iter()
                 .map(|s| s.description())
@@ -79,6 +77,22 @@ impl VerifySpec {
                 .join(" AND "),
         }
     }
+}
+
+fn format_metric_threshold(metric: &str, op: &str, value: f64) -> String {
+    format!("{metric} {op} {value:.3}")
+}
+
+fn format_field_not_equals(key: &str, value: &str) -> String {
+    format!("{key} != \"{value}\"")
+}
+
+fn format_field_equals_u64(key: &str, value: u64) -> String {
+    format!("{key} == {value}")
+}
+
+fn format_invariant_resolved_description(id: &str) -> String {
+    format!("{id} status in {{enforced, collapsed}}")
 }
 
 fn invariant_resolved(text: &str, id: &str) -> bool {
@@ -561,17 +575,38 @@ fn push_eval_metric_plan(
     });
 }
 
+struct EvalMetricValues<'a> {
+    eval: &'a Map<String, Value>,
+}
+
+impl<'a> EvalMetricValues<'a> {
+    fn new(eval: &'a Map<String, Value>) -> Self {
+        Self { eval }
+    }
+
+    fn f64(&self, key: &str) -> f64 {
+        self.f64_or(key, 0.0)
+    }
+
+    fn f64_or(&self, key: &str, default: f64) -> f64 {
+        self.eval.get(key).and_then(|v| v.as_f64()).unwrap_or(default)
+    }
+
+    fn u64(&self, key: &str) -> u64 {
+        self.eval.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
+    }
+
+    fn string(&self, key: &str) -> String {
+        self.eval.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
+    }
+
+    fn arr_str(&self, key: &str) -> String {
+        eval_array_string(self.eval, key)
+    }
+}
+
 pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<RepairPlan> {
-    let get_f64 = |key: &str| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let get_f64_or = |key: &str, d: f64| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(d);
-    let get_u64 = |key: &str| eval.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
-    let get_str = |key: &str| {
-        eval.get(key)
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
-    };
-    let get_arr_str = |key: &str| eval_array_string(eval, key);
+    let eval_values = EvalMetricValues::new(eval);
 
     let mut plans: Vec<RepairPlan> = Vec::new();
 
@@ -590,7 +625,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             owner: $owner:expr,
             evidence: $evidence:expr,
         ) => {{
-            let score: f64 = get_f64_or($score_key, $score_default);
+            let score: f64 = eval_values.f64_or($score_key, $score_default);
             let target: f64 = $target;
             push_eval_metric_plan(
                 &mut plans,
@@ -617,7 +652,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         goal: "all objectives in OBJECTIVES.json marked done".to_string(),
         trigger: format!(
             "objective_progress={:.3}; one or more objectives not complete",
-            get_f64("objective_progress")
+            eval_values.f64("objective_progress")
         ),
         policy: "close_or_update_objectives",
         action: "use objectives action (op: update_objective) to close complete objectives; \
@@ -636,7 +671,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         goal: "no active violations; semantic_fn_error_rate = 0".to_string(),
         trigger: format!(
             "safety={:.3}; check VIOLATIONS.json or non-zero semantic_fn_error_rate",
-            get_f64("safety")
+            eval_values.f64("safety")
         ),
         policy: "resolve_violations",
         action: "resolve all active violations in agent_state/VIOLATIONS.json first".to_string(),
@@ -654,7 +689,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         goal: "at least 85% of PLAN.json tasks complete".to_string(),
         trigger: format!(
             "task_velocity={:.3}; stale or incomplete tasks accumulating",
-            get_f64("task_velocity")
+            eval_values.f64("task_velocity")
         ),
         policy: "close_stale_tasks",
         action: "mark completed tasks done; close tasks that will not execute this session"
@@ -673,7 +708,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         goal: "repeated open issues resolved or closed".to_string(),
         trigger: format!(
             "issue_health={:.3}; repeated open issues without resolution",
-            get_f64("issue_health")
+            eval_values.f64("issue_health")
         ),
         policy: "fix_or_close_repeated_issues",
         action: "fix or close top repeated open issues in ISSUES.json by score descending"
@@ -685,10 +720,10 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     );
 
     {
-        let error_rate = get_f64("semantic_fn_error_rate");
-        let low_conf = get_f64("semantic_fn_low_confidence_rate");
-        let low_conf_count = get_u64("semantic_fn_low_confidence");
-        let intent = get_f64("semantic_fn_intent_coverage");
+        let error_rate = eval_values.f64("semantic_fn_error_rate");
+        let low_conf = eval_values.f64("semantic_fn_low_confidence_rate");
+        let low_conf_count = eval_values.u64("semantic_fn_low_confidence");
+        let intent = eval_values.f64("semantic_fn_intent_coverage");
         plan!(
             metric: "semantic_contract",
             target: 0.50,
@@ -730,7 +765,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     }
 
     {
-        let missing = get_arr_str("missing_structural_invariant_kinds");
+        let missing = eval_values.arr_str("missing_structural_invariant_kinds");
         plan!(
             metric: "structural_invariant_coverage",
             target: 1.0,
@@ -741,7 +776,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             trigger: if missing.is_empty() {
                 format!(
                     "structural_invariant_coverage={:.3}",
-                    get_f64("structural_invariant_coverage")
+                    eval_values.f64("structural_invariant_coverage")
                 )
             } else {
                 format!("missing invariants for: {missing}")
@@ -762,10 +797,10 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     }
 
     {
-        let top = get_str("blocker_top_uncovered");
-        let distinct = get_u64("blocker_distinct_classes");
-        let covered = get_u64("blocker_covered_classes");
-        let score = get_f64_or("blocker_class_coverage", 1.0);
+        let top = eval_values.string("blocker_top_uncovered");
+        let distinct = eval_values.u64("blocker_distinct_classes");
+        let covered = eval_values.u64("blocker_covered_classes");
+        let score = eval_values.f64_or("blocker_class_coverage", 1.0);
         let mv = if top.is_empty() {
             VerifySpec::ScoreAbove { metric: "blocker_class_coverage", threshold: 1.0 }
         } else {
@@ -812,9 +847,87 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     }
 
     {
-        let truncations = get_u64("tlog_prompt_truncation_count");
-        let lag_ms = get_u64("tlog_actionable_lag_total_ms");
-        let payload = get_str("tlog_dominant_payload_kind");
+        let new_orphans = eval_values.u64("artifact_lineage_orphans_new");
+        if new_orphans > 0 {
+            push_eval_metric_plan(
+                &mut plans,
+                "artifact_lineage_orphans_new",
+                0.0,
+                1.0,
+                "new artifact writes have complete lineage after migration boundary".to_string(),
+                format!(
+                    "artifact_lineage_orphans_new={new_orphans}; new artifact events lack \
+                    artifact_id/source_event_seq/producer/target/eval linkage"
+                ),
+                "repair_artifact_lineage",
+                "patch artifact write call sites so each new WorkspaceArtifactWriteRequested/Applied \
+                event carries artifact_id, source_event_seq, producer_action, target, \
+                repair_plan_id/plan_task_id when applicable, and eval_outcome".to_string(),
+                "artifact_lineage_orphans_new = 0 on next eval".to_string(),
+                VerifySpec::FieldEqualsU64 {
+                    key: "artifact_lineage_orphans_new",
+                    value: 0,
+                },
+                "executor",
+                "agent_state/tlog.ndjson WorkspaceArtifactWriteRequested/Applied lineage fields",
+            );
+        }
+    }
+
+    {
+        let bad_handoffs = eval_values.u64("handoff_without_ready");
+        if bad_handoffs > 0 {
+            push_eval_metric_plan(
+                &mut plans,
+                "handoff_without_ready",
+                0.0,
+                1.0,
+                "planner handoff is blocked unless PLAN has at least one ready task".to_string(),
+                format!(
+                    "handoff_without_ready={bad_handoffs}; H=ready was observed while Q=0"
+                ),
+                "enforce_plan_ready_binding",
+                "patch planner/executor route gates so status=ready requires \
+                PLAN.ready_tasks>0; otherwise record planner_handoff_without_ready_tasks \
+                and wake planner for auto-replan".to_string(),
+                "handoff_without_ready = 0 on next eval".to_string(),
+                VerifySpec::FieldEqualsU64 {
+                    key: "handoff_without_ready",
+                    value: 0,
+                },
+                "executor",
+                "agent_state/tlog.ndjson BlockerRecorded(planner_handoff_without_ready_tasks)",
+            );
+        }
+    }
+
+    {
+        let binding_rate = eval_values.f64_or("repair_plan_binding_rate", 1.0);
+        plan!(
+            metric: "repair_plan_binding_rate",
+            target: 1.0,
+            score_key: "repair_plan_binding_rate",
+            score_default: 1.0,
+            goal: "every active repair plan has a PLAN task carrying repair_plan_id and required_mutation".to_string(),
+            trigger: format!("repair_plan_binding_rate={binding_rate:.3}; some repair work lacks deterministic PLAN binding"),
+            policy: "enforce_repair_plan_binding",
+            action: "update active PLAN repair tasks to include repair_plan_id, \
+                required_mutation, target_files, and validation evidence copied from \
+                the rendered REPAIR_PLAN block".to_string(),
+            verify: "repair_plan_binding_rate = 1.0 on next eval".to_string(),
+            machine_verify: VerifySpec::ScoreAbove {
+                metric: "repair_plan_binding_rate",
+                threshold: 1.0,
+            },
+            owner: "planner",
+            evidence: "agent_state/PLAN.json, PlanVerifyRecorded(binding_checked=true)",
+        );
+    }
+
+    {
+        let truncations = eval_values.u64("tlog_prompt_truncation_count");
+        let lag_ms = eval_values.u64("tlog_actionable_lag_total_ms");
+        let payload = eval_values.string("tlog_dominant_payload_kind");
         plan!(
             metric: "canonical_delta_health",
             target: 0.9,
@@ -842,8 +955,8 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     }
 
     {
-        let unmeasured = get_u64("unmeasured_improvement_attempts");
-        let attempts = get_u64("improvement_attempts");
+        let unmeasured = eval_values.u64("unmeasured_improvement_attempts");
+        let attempts = eval_values.u64("improvement_attempts");
         plan!(
             metric: "improvement_measurement",
             target: 1.0,
@@ -868,8 +981,8 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     }
 
     {
-        let unvalidated = get_u64("unvalidated_improvement_attempts");
-        let attempts = get_u64("improvement_attempts");
+        let unvalidated = eval_values.u64("unvalidated_improvement_attempts");
+        let attempts = eval_values.u64("improvement_attempts");
         plan!(
             metric: "improvement_validation",
             target: 1.0,
@@ -895,8 +1008,8 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     }
 
     {
-        let regressed = get_u64("regressed_improvement_attempts");
-        let measured = get_u64("measured_improvement_attempts");
+        let regressed = eval_values.u64("regressed_improvement_attempts");
+        let measured = eval_values.u64("measured_improvement_attempts");
         plan!(
             metric: "improvement_effectiveness",
             target: 0.8,
@@ -920,20 +1033,25 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
         );
     }
 
-    {
-        let failures = get_u64("recovery_failures");
-        let attempts = get_u64("recovery_attempts");
-        push_recovery_effectiveness_plan(
-            &mut plans,
-            get_f64_or("recovery_effectiveness", 1.0),
-            failures,
-            attempts,
-        );
-    }
+    append_recovery_effectiveness_metric_plan(&eval_values, &mut plans);
 
     sort_repair_plans_by_priority_and_score(&mut plans);
     plans.truncate(max);
     plans
+}
+
+fn append_recovery_effectiveness_metric_plan(
+    eval_values: &EvalMetricValues<'_>,
+    plans: &mut Vec<RepairPlan>,
+) {
+    let failures = eval_values.u64("recovery_failures");
+    let attempts = eval_values.u64("recovery_attempts");
+    push_recovery_effectiveness_plan(
+        plans,
+        eval_values.f64_or("recovery_effectiveness", 1.0),
+        failures,
+        attempts,
+    );
 }
 
 fn push_recovery_effectiveness_plan(
@@ -986,18 +1104,7 @@ pub fn snapshot_to_eval_map(
     let b = &snapshot.blocker_class_coverage;
     let s = &snapshot.structural_invariant_coverage;
     let mut m = Map::new();
-    m.insert("objective_progress".into(), json!(v.objective_progress));
-    m.insert("safety".into(), json!(v.safety));
-    m.insert("task_velocity".into(), json!(v.task_velocity));
-    m.insert("issue_health".into(), json!(v.issue_health));
-    m.insert("semantic_contract".into(), json!(v.semantic_contract));
-    m.insert("structural_invariant_coverage".into(), json!(v.structural_invariant_coverage));
-    m.insert("blocker_class_coverage".into(), json!(v.blocker_class_coverage));
-    m.insert("canonical_delta_health".into(), json!(v.canonical_delta_health));
-    m.insert("improvement_measurement".into(), json!(v.improvement_measurement));
-    m.insert("improvement_validation".into(), json!(v.improvement_validation));
-    m.insert("improvement_effectiveness".into(), json!(v.improvement_effectiveness));
-    m.insert("recovery_effectiveness".into(), json!(v.recovery_effectiveness));
+    append_snapshot_vector_eval_fields(v, &mut m);
     m.insert("blocker_distinct_classes".into(), json!(b.distinct_classes));
     m.insert("blocker_covered_classes".into(), json!(b.covered_classes));
     m.insert(
@@ -1015,13 +1122,60 @@ pub fn snapshot_to_eval_map(
     m.insert("measured_improvement_attempts".into(), json!(t.measured_improvement_attempts));
     m.insert("recovery_attempts".into(), json!(t.recovery_attempts));
     m.insert("recovery_failures".into(), json!(t.recovery_failures));
+    m.insert(
+        "artifact_lineage_orphans_new".into(),
+        json!(t.artifact_lineage_orphans_new),
+    );
+    m.insert(
+        "artifact_lineage_complete".into(),
+        json!(t.artifact_lineage_complete),
+    );
+    m.insert(
+        "artifact_lineage_orphans".into(),
+        json!(t.artifact_lineage_orphans),
+    );
+    m.insert("orphan_artifact_ids".into(), json!(&t.orphan_artifact_ids));
+    m.insert("handoff_without_ready".into(), json!(t.handoff_without_ready));
+    m.insert(
+        "repair_plan_binding_rate".into(),
+        json!(t.repair_plan_binding_rate),
+    );
+    m.insert(
+        "artifact_lineage_migration_seq_boundary".into(),
+        json!(t.artifact_lineage_migration_seq_boundary),
+    );
+    append_snapshot_semantic_eval_fields(snapshot, &mut m);
+    m
+}
+
+fn append_snapshot_vector_eval_fields(
+    v: &crate::evaluation::EvaluationVector,
+    m: &mut Map<String, Value>,
+) {
+    m.insert("objective_progress".into(), json!(v.objective_progress));
+    m.insert("safety".into(), json!(v.safety));
+    m.insert("task_velocity".into(), json!(v.task_velocity));
+    m.insert("issue_health".into(), json!(v.issue_health));
+    m.insert("semantic_contract".into(), json!(v.semantic_contract));
+    m.insert("structural_invariant_coverage".into(), json!(v.structural_invariant_coverage));
+    m.insert("blocker_class_coverage".into(), json!(v.blocker_class_coverage));
+    m.insert("canonical_delta_health".into(), json!(v.canonical_delta_health));
+    m.insert("improvement_measurement".into(), json!(v.improvement_measurement));
+    m.insert("improvement_validation".into(), json!(v.improvement_validation));
+    m.insert("improvement_effectiveness".into(), json!(v.improvement_effectiveness));
+    m.insert("recovery_effectiveness".into(), json!(v.recovery_effectiveness));
+}
+
+fn append_snapshot_semantic_eval_fields(
+    snapshot: &crate::evaluation::EvaluationWorkspaceSnapshot,
+    m: &mut Map<String, Value>,
+) {
     m.insert("semantic_fn_error_rate".into(), json!(snapshot.semantic_fn_error_rate));
     m.insert("semantic_fn_intent_coverage".into(), json!(snapshot.semantic_fn_intent_coverage));
     m.insert(
         "semantic_fn_low_confidence_rate".into(),
         json!(snapshot.semantic_fn_low_confidence_rate),
     );
-    m
 }
 
 // ── Tlog scanning helpers ─────────────────────────────────────────────────────
@@ -1274,6 +1428,35 @@ mod tests {
         let mut m = Map::new();
         m.insert("k".into(), json!("llm_timeout"));
         assert!(!VerifySpec::FieldNotEquals { key: "k", value: "llm_timeout".into() }.check(&m, ""));
+    }
+
+    #[test]
+    fn field_equals_u64_checks_numeric_count() {
+        let mut m = Map::new();
+        m.insert("handoff_without_ready".into(), json!(0u64));
+
+        assert!(VerifySpec::FieldEqualsU64 {
+            key: "handoff_without_ready",
+            value: 0,
+        }
+        .check(&m, ""));
+    }
+
+    #[test]
+    fn hard_gate_metrics_emit_repair_plans_when_nonzero() {
+        let mut m = Map::new();
+        m.insert("artifact_lineage_orphans_new".into(), json!(2u64));
+        m.insert("handoff_without_ready".into(), json!(1u64));
+        m.insert("repair_plan_binding_rate".into(), json!(0.5));
+
+        let ids: Vec<String> = build_eval_metric_plans(&m, 12)
+            .into_iter()
+            .map(|plan| plan.id)
+            .collect();
+
+        assert!(ids.contains(&"eval_metric:artifact_lineage_orphans_new".to_string()));
+        assert!(ids.contains(&"eval_metric:handoff_without_ready".to_string()));
+        assert!(ids.contains(&"eval_metric:repair_plan_binding_rate".to_string()));
     }
 
     #[test]

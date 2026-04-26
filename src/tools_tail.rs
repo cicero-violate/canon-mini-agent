@@ -454,6 +454,7 @@ fn execute_action(
         "message" => handle_message_action(
             role,
             step,
+            workspace,
             action,
             defer_planner_to_executor_handoff,
             writer.as_deref_mut(),

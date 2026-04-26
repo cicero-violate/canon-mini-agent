@@ -1033,6 +1033,10 @@ pub(crate) fn parse_actions(raw: &str) -> Result<Vec<Value>> {
             return Ok(actions);
         }
     }
+    parse_actions_fallback(raw)
+}
+
+fn parse_actions_fallback(raw: &str) -> Result<Vec<Value>> {
     match parse_json_from_text(raw) {
         Ok(value) => parse_json_action_value(value)
             .with_context(|| "response contained JSON but not a valid action object"),
@@ -1421,10 +1425,14 @@ fn validate_optional_message_role(obj: &serde_json::Map<String, Value>, field: &
     let Some(role) = obj.get(field).and_then(|v| v.as_str()) else {
         return Ok(());
     };
-    if !matches!(role, "user" | "executor" | "planner") {
+    if !is_valid_optional_message_role(role) {
         bail!("{field} must be one of: user|executor|planner");
     }
     Ok(())
+}
+
+fn is_valid_optional_message_role(role: &str) -> bool {
+    matches!(role, "user" | "executor" | "planner")
 }
 
 /// Intent: validation_gate

@@ -2382,12 +2382,17 @@ fn read_context_window(file: &str, line: u32, before: usize, after: usize) -> (u
     let idx = line.saturating_sub(1) as usize;
     let start = idx.saturating_sub(before);
     let end = usize::min(idx.saturating_add(after), lines.len().saturating_sub(1));
+    let window = render_context_window_lines(&lines, start, end);
+    ((start + 1) as u32, (end + 1) as u32, window)
+}
+
+fn render_context_window_lines(lines: &[&str], start: usize, end: usize) -> String {
     let mut window = String::new();
     for (offset, text) in lines[start..=end].iter().enumerate() {
         let line_no = start + offset + 1;
         window.push_str(&format!("{line_no}: {text}\n"));
     }
-    ((start + 1) as u32, (end + 1) as u32, window)
+    window
 }
 
 #[cfg(test)]

@@ -840,19 +840,22 @@ fn parse_bulk_renames(arr: &[Value], crate_name: &str) -> Result<Vec<(String, St
 
     let mut pairs = Vec::new();
     for (i, item) in arr.iter().enumerate() {
-        let old = item
-            .get("old")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `old`"))?;
-        let new = item
-            .get("new")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("rename_symbol: renames[{i}] missing `new`"))?;
-
-        let (old, new) = normalize_pair(crate_name, old, new)?;
-        pairs.push((old, new));
+        pairs.push(parse_bulk_rename_pair(item, crate_name, i)?);
     }
     Ok(pairs)
+}
+
+fn rename_pair_field<'a>(item: &'a Value, index: usize, field: &str) -> Result<&'a str> {
+    item.get(field)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("rename_symbol: renames[{index}] missing `{field}`"))
+}
+
+fn parse_bulk_rename_pair(item: &Value, crate_name: &str, index: usize) -> Result<(String, String)> {
+    let old = rename_pair_field(item, index, "old")?;
+    let new = rename_pair_field(item, index, "new")?;
+
+    normalize_pair(crate_name, old, new)
 }
 
 /// Intent: pure_transform

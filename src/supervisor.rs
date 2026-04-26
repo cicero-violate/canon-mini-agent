@@ -349,6 +349,8 @@ fn rust_patch_verification_flag_path(state_dir: &Path) -> PathBuf {
     state_dir.join("rust_patch_verification_requested.flag")
 }
 
+/// Intent: canonical_read
+/// Resource: state
 fn rust_patch_verification_requested(state_dir: &Path) -> bool {
     replay_canonical_control_snapshot(state_dir)
         .map(|s| s.rust_patch_verification_requested)
@@ -662,6 +664,10 @@ fn preferred_build_kind(prefer_release: bool) -> BuildKind {
 }
 
 fn build_kind_label(kind: BuildKind) -> &'static str {
+    build_kind_label_for_variant(kind)
+}
+
+fn build_kind_label_for_variant(kind: BuildKind) -> &'static str {
     match kind {
         BuildKind::Debug => "debug",
         BuildKind::Release => "release",

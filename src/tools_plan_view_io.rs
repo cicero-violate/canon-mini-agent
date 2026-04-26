@@ -115,15 +115,19 @@ fn build_plan_sorted_graph_state(
         let from = edge.get("from").and_then(|v| v.as_str()).unwrap_or("");
         let to = edge.get("to").and_then(|v| v.as_str()).unwrap_or("");
         if from.is_empty() || to.is_empty() {
-            bail!(format!(
-                "plan edge missing from/to; candidate edge: {}",
-                serde_json::to_string(edge).unwrap_or_else(|_| "<invalid edge json>".to_string())
-            ));
+            bail!(missing_plan_edge_endpoint_message(edge));
         }
         insert_plan_edge_adjacency(&mut adj, from, to);
         increment_plan_edge_indegree(&mut indegree, to);
     }
     Ok((indegree, adj))
+}
+
+fn missing_plan_edge_endpoint_message(edge: &Value) -> String {
+    format!(
+        "plan edge missing from/to; candidate edge: {}",
+        serde_json::to_string(edge).unwrap_or_else(|_| "<invalid edge json>".to_string())
+    )
 }
 
 /// Intent: pure_transform
@@ -987,9 +991,30 @@ fn exec_read_file(
     }
 }
 
+fn planner_ready_handoff_without_ready_tasks(workspace: &Path, role: &str, action: &Value) -> bool {
+    if !is_planner_to_executor_message(role, action) {
+        return false;
+    }
+    let status = action.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if !status.eq_ignore_ascii_case("ready") {
+        return false;
+    }
+    crate::prompt_inputs::read_ready_tasks(workspace, 1) == "(no ready tasks)"
+}
+
+fn message_ready_window_len(action: &Value) -> usize {
+    action
+        .get("payload")
+        .and_then(|payload| payload.get("ready_window"))
+        .and_then(|ready_window| ready_window.as_array())
+        .map(|items| items.len())
+        .unwrap_or(0)
+}
+
 fn handle_message_action(
     role: &str,
     step: usize,
+    workspace: &Path,
     action: &Value,
     defer_planner_to_executor_handoff: bool,
     mut writer: Option<&mut CanonicalWriter>,
@@ -1021,6 +1046,23 @@ fn handle_message_action(
     let executor_to_planner =
         normalized_to == "planner" && normalized_role.starts_with("executor");
     let _planner_executor_pair = planner_to_executor || executor_to_planner;
+    if planner_ready_handoff_without_ready_tasks(workspace, role, action) {
+        let ready_window_len = message_ready_window_len(action);
+        let reason = format!(
+            "planner_handoff_without_ready_tasks: H=ready but PLAN.ready_tasks=0 \
+            and payload.ready_window.len={ready_window_len}; enforce_plan_ready_binding \
+            requires a ready PLAN task before executor handoff"
+        );
+        crate::blockers::record_action_failure_with_writer(
+            workspace,
+            writer.as_deref_mut(),
+            role,
+            "planner_handoff_without_ready_tasks",
+            &reason,
+            None,
+        );
+        return Ok((false, reason));
+    }
     // planner→executor handoffs must emit InboundMessageQueued + WakeSignalQueued.
     // The logged action path defers emission until after ActionResultRecorded so
     // the handoff causality invariant observes a strictly greater queue seq.

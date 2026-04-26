@@ -137,6 +137,12 @@ pub fn run(
             .clone()
             .unwrap_or_default(),
         blocker_class_coverage: snapshot.vector.blocker_class_coverage,
+        artifact_lineage_orphans_new: snapshot.tlog_delta_signals.artifact_lineage_orphans_new,
+        handoff_without_ready: snapshot.tlog_delta_signals.handoff_without_ready,
+        repair_plan_binding_rate: snapshot.tlog_delta_signals.repair_plan_binding_rate,
+        artifact_lineage_migration_seq_boundary: snapshot
+            .tlog_delta_signals
+            .artifact_lineage_migration_seq_boundary,
     };
 
     if let Some(w) = writer {
@@ -175,6 +181,9 @@ pub fn run(
                     plan.machine_verify.description(),
                     binding.description
                 ),
+                binding_checked: true,
+                binding_passed: binding.passed,
+                binding_description: binding.description.clone(),
             },
         );
 
@@ -239,6 +248,9 @@ pub fn run(
                         "all repair_plan_ids verified — mark objective '{}' done",
                         obj.id
                     ),
+                    binding_checked: false,
+                    binding_passed: true,
+                    binding_description: String::new(),
                 },
             );
         }

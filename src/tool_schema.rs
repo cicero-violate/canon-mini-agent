@@ -1528,24 +1528,24 @@ fn action_schema_mismatch_message(action: &Value) -> String {
 /// Invariants: searches nested schema values, including anyOf/oneOf branches, and matches action const or enum entries
 /// Failure: returns None when no matching action schema exists
 /// Provenance: rustc:facts + rustc:docstring
-fn find_action_schema<'a>(value: &'a Value, action: &str) -> Option<&'a Value> {
-    fn matches_action(value: &Value, action: &str) -> bool {
-        let action_prop = value.get("properties").and_then(|p| p.get("action"));
-        let const_match = action_prop
-            .and_then(|a| a.get("const"))
-            .and_then(|c| c.as_str())
-            == Some(action);
-        let enum_match = action_prop
-            .and_then(|a| a.get("enum"))
-            .and_then(|e| e.as_array())
-            .map(|arr| arr.iter().any(|v| v.as_str() == Some(action)))
-            .unwrap_or(false);
-        const_match || enum_match
-    }
+fn action_schema_matches(value: &Value, action: &str) -> bool {
+    let action_prop = value.get("properties").and_then(|p| p.get("action"));
+    let const_match = action_prop
+        .and_then(|a| a.get("const"))
+        .and_then(|c| c.as_str())
+        == Some(action);
+    let enum_match = action_prop
+        .and_then(|a| a.get("enum"))
+        .and_then(|e| e.as_array())
+        .map(|arr| arr.iter().any(|v| v.as_str() == Some(action)))
+        .unwrap_or(false);
+    const_match || enum_match
+}
 
+fn find_action_schema<'a>(value: &'a Value, action: &str) -> Option<&'a Value> {
     let mut stack = vec![value];
     while let Some(value) = stack.pop() {
-        if matches_action(value, action) {
+        if action_schema_matches(value, action) {
             return Some(value);
         }
 

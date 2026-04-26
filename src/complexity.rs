@@ -1705,71 +1705,8 @@ fn build_complexity_report(
     let tasks_progress = format!("{}/{}", eval.completed_tasks, eval.total_tasks);
     let mut eval_report = eval_report_score_fields(eval, eval_delta);
     append_tlog_delta_eval_report_fields(eval, &mut eval_report);
-    eval_report.insert(
-        "graph_risk_count".into(),
-        json!(eval.structural_invariant_coverage.graph_risk_count),
-    );
-    eval_report.insert(
-        "invariant_covered_count".into(),
-        json!(eval.structural_invariant_coverage.invariant_covered_count),
-    );
-    eval_report.insert(
-        "missing_structural_invariants".into(),
-        json!(eval.structural_invariant_coverage.missing_invariant_count),
-    );
-    eval_report.insert(
-        "missing_structural_invariant_kinds".into(),
-        json!(&eval.structural_invariant_coverage.missing),
-    );
-    eval_report.insert(
-        "blocker_class_coverage".into(),
-        json!(eval.vector.blocker_class_coverage),
-    );
-    eval_report.insert(
-        "blocker_distinct_classes".into(),
-        json!(eval.blocker_class_coverage.distinct_classes),
-    );
-    eval_report.insert(
-        "blocker_covered_classes".into(),
-        json!(eval.blocker_class_coverage.covered_classes),
-    );
-    eval_report.insert(
-        "blocker_top_uncovered".into(),
-        json!(eval.blocker_class_coverage.top_uncovered.as_deref().unwrap_or("")),
-    );
-    eval_report.insert("semantic_fn_total".into(), json!(eval.semantic_fn_total));
-    eval_report.insert(
-        "semantic_fn_with_any_error".into(),
-        json!(eval.semantic_fn_with_any_error),
-    );
-    eval_report.insert(
-        "semantic_fn_error_rate".into(),
-        json!(eval.semantic_fn_error_rate),
-    );
-    eval_report.insert(
-        "semantic_fn_intent_classified".into(),
-        json!(eval.semantic_fn_intent_classified),
-    );
-    eval_report.insert(
-        "semantic_fn_totalized".into(),
-        json!(eval.semantic_fn_totalized),
-    );
-    eval_report.insert(
-        "semantic_fn_totalization_coverage".into(),
-        json!(eval.semantic_fn_totalization_coverage),
-    );
-    eval_report.insert(
-        "semantic_fn_low_confidence".into(),
-        json!(eval.semantic_fn_low_confidence),
-    );
-    eval_report.insert(
-        "semantic_fn_intent_coverage".into(),
-        json!(eval.semantic_fn_intent_coverage),
-    );
-    eval_report.insert(
-        "semantic_fn_low_confidence_rate".into(),
-        json!(eval.semantic_fn_low_confidence_rate),
-    );
+    append_structural_and_blocker_eval_report_fields(eval, &mut eval_report);
+    append_semantic_eval_report_fields(eval, &mut eval_report);
     eval_report.insert(
         "eval_enforcement_passed".into(),
         json!(eval.eval_enforcement.passed),
@@ -1892,6 +1829,69 @@ fn build_complexity_report(
     )
 }
 
+fn append_semantic_eval_report_fields(
+    eval: &crate::evaluation::EvaluationWorkspaceSnapshot,
+    eval_report: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    for (key, value) in semantic_eval_report_fields(eval) {
+        eval_report.insert(key.into(), value);
+    }
+}
+
+fn semantic_eval_report_fields(
+    eval: &crate::evaluation::EvaluationWorkspaceSnapshot,
+) -> [(&'static str, serde_json::Value); 9] {
+    [
+        ("semantic_fn_total", json!(eval.semantic_fn_total)),
+        ("semantic_fn_with_any_error", json!(eval.semantic_fn_with_any_error)),
+        ("semantic_fn_error_rate", json!(eval.semantic_fn_error_rate)),
+        ("semantic_fn_intent_classified", json!(eval.semantic_fn_intent_classified)),
+        ("semantic_fn_totalized", json!(eval.semantic_fn_totalized)),
+        ("semantic_fn_totalization_coverage", json!(eval.semantic_fn_totalization_coverage)),
+        ("semantic_fn_low_confidence", json!(eval.semantic_fn_low_confidence)),
+        ("semantic_fn_intent_coverage", json!(eval.semantic_fn_intent_coverage)),
+        ("semantic_fn_low_confidence_rate", json!(eval.semantic_fn_low_confidence_rate)),
+    ]
+}
+
+fn append_structural_and_blocker_eval_report_fields(
+    eval: &crate::evaluation::EvaluationWorkspaceSnapshot,
+    eval_report: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    eval_report.insert(
+        "graph_risk_count".into(),
+        json!(eval.structural_invariant_coverage.graph_risk_count),
+    );
+    eval_report.insert(
+        "invariant_covered_count".into(),
+        json!(eval.structural_invariant_coverage.invariant_covered_count),
+    );
+    eval_report.insert(
+        "missing_structural_invariants".into(),
+        json!(eval.structural_invariant_coverage.missing_invariant_count),
+    );
+    eval_report.insert(
+        "missing_structural_invariant_kinds".into(),
+        json!(&eval.structural_invariant_coverage.missing),
+    );
+    eval_report.insert(
+        "blocker_class_coverage".into(),
+        json!(eval.vector.blocker_class_coverage),
+    );
+    eval_report.insert(
+        "blocker_distinct_classes".into(),
+        json!(eval.blocker_class_coverage.distinct_classes),
+    );
+    eval_report.insert(
+        "blocker_covered_classes".into(),
+        json!(eval.blocker_class_coverage.covered_classes),
+    );
+    eval_report.insert(
+        "blocker_top_uncovered".into(),
+        json!(eval.blocker_class_coverage.top_uncovered.as_deref().unwrap_or("")),
+    );
+}
+
 fn eval_report_score_fields(
     eval: &crate::evaluation::EvaluationWorkspaceSnapshot,
     eval_delta: Option<&crate::evaluation::EvalDelta>,
@@ -1993,6 +1993,42 @@ fn append_tlog_delta_eval_report_fields(
     eval_report.insert(
         "recovery_measurement_points".into(),
         json!(eval.tlog_delta_signals.recovery_measurement_points),
+    );
+    eval_report.insert(
+        "artifact_lineage_orphans_new".into(),
+        json!(eval.tlog_delta_signals.artifact_lineage_orphans_new),
+    );
+    eval_report.insert(
+        "artifact_lineage_complete".into(),
+        json!(eval.tlog_delta_signals.artifact_lineage_complete),
+    );
+    eval_report.insert(
+        "artifact_lineage_orphans".into(),
+        json!(eval.tlog_delta_signals.artifact_lineage_orphans),
+    );
+    eval_report.insert(
+        "orphan_artifact_ids".into(),
+        json!(&eval.tlog_delta_signals.orphan_artifact_ids),
+    );
+    eval_report.insert(
+        "artifact_lineage_migration_seq_boundary".into(),
+        json!(eval.tlog_delta_signals.artifact_lineage_migration_seq_boundary),
+    );
+    eval_report.insert(
+        "handoff_without_ready".into(),
+        json!(eval.tlog_delta_signals.handoff_without_ready),
+    );
+    eval_report.insert(
+        "repair_plan_binding_rate".into(),
+        json!(eval.tlog_delta_signals.repair_plan_binding_rate),
+    );
+    eval_report.insert(
+        "repair_plan_binding_checks".into(),
+        json!(eval.tlog_delta_signals.repair_plan_binding_checks),
+    );
+    eval_report.insert(
+        "repair_plan_binding_passed".into(),
+        json!(eval.tlog_delta_signals.repair_plan_binding_passed),
     );
 }
 

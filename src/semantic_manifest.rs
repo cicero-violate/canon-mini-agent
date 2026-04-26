@@ -1086,26 +1086,17 @@ fn build_semantic_manifest_proposals(
             effects_by_owner,
             calls_by_owner,
         );
-        let has_error = manifest_has_error(&manifest);
-        let has_low_confidence = manifest_has_low_confidence(&manifest);
-        manifest.manifest_status = if has_error {
-            "partial_error".to_string()
-        } else if has_low_confidence {
-            "low_confidence".to_string()
-        } else {
-            "complete".to_string()
-        };
-        let intent_is_classified = intent_is_classified(&manifest.intent_class);
+        let manifest_eval = finalize_manifest_status(&mut manifest);
         proposals.insert(node_id.clone(), manifest);
         if node.kind == "fn" {
             fn_total += 1;
-            if has_error {
+            if manifest_eval.has_error {
                 fn_with_any_error += 1;
             }
-            if intent_is_classified {
+            if manifest_eval.intent_is_classified {
                 fn_intent_classified += 1;
             }
-            if has_low_confidence {
+            if manifest_eval.has_low_confidence {
                 fn_low_confidence += 1;
             }
         }
@@ -1120,6 +1111,29 @@ fn build_semantic_manifest_proposals(
         fn_intent_classified,
         fn_low_confidence,
     )
+}
+
+struct ManifestProposalEval {
+    has_error: bool,
+    has_low_confidence: bool,
+    intent_is_classified: bool,
+}
+
+fn finalize_manifest_status(manifest: &mut SemanticManifest) -> ManifestProposalEval {
+    let has_error = manifest_has_error(manifest);
+    let has_low_confidence = manifest_has_low_confidence(manifest);
+    manifest.manifest_status = if has_error {
+        "partial_error".to_string()
+    } else if has_low_confidence {
+        "low_confidence".to_string()
+    } else {
+        "complete".to_string()
+    };
+    ManifestProposalEval {
+        has_error,
+        has_low_confidence,
+        intent_is_classified: intent_is_classified(&manifest.intent_class),
+    }
 }
 
 fn build_node_semantic_manifest_proposal(
