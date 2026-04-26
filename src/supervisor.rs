@@ -770,7 +770,7 @@ fn checkpoint_build_succeeded(root: &Path, state_dir: &Path, reason: &str) -> bo
         state_dir,
         reason,
         "cargo test",
-        &["test", "--workspace"],
+        &["test", "--workspace", "--lib", "--tests"],
     ) {
         return false;
     }
@@ -849,7 +849,7 @@ fn checkpoint_command_succeeded(
                     "cargo_test_gate_failed",
                     true,
                     rust_patch_sensitive_changed_paths(root).unwrap_or_default(),
-                    "cargo test --workspace",
+                    "cargo test --workspace --lib --tests",
                 );
                 false
             }
@@ -869,7 +869,7 @@ fn checkpoint_command_succeeded(
                     "cargo_test_gate_failed",
                     true,
                     rust_patch_sensitive_changed_paths(root).unwrap_or_default(),
-                    "cargo test --workspace",
+                    "cargo test --workspace --lib --tests",
                 );
                 false
             }
