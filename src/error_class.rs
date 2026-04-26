@@ -429,11 +429,19 @@ fn classify_static_action_kind_failure(action_kind: &str) -> Option<ErrorClass> 
         "livelock" => Some(ErrorClass::LivelockDetected),
         "build_gate" => Some(ErrorClass::CompileError),
         "solo_completion_gate" | "diagnostics_evidence_gate" => verification_failed_class(),
-        "reaction_only" => Some(ErrorClass::ReactionOnly),
+        "reaction_only" => reaction_only_class(),
         "executor_submit_timeout" | "submit_ack_timeout" => llm_timeout_class(),
-        "repeated_failed_action" | "idle_streak" => Some(ErrorClass::InvalidSchema),
+        "repeated_failed_action" | "idle_streak" => invalid_schema_class(),
         _ => None,
     }
+}
+
+fn reaction_only_class() -> Option<ErrorClass> {
+    Some(ErrorClass::ReactionOnly)
+}
+
+fn invalid_schema_class() -> Option<ErrorClass> {
+    Some(ErrorClass::InvalidSchema)
 }
 
 fn llm_timeout_class() -> Option<ErrorClass> {

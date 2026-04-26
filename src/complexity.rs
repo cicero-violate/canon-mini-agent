@@ -1545,6 +1545,10 @@ pub fn write_complexity_report(workspace: &Path) -> Result<Option<PathBuf>> {
     // source. Keep the refresh behind the apply_patch_ok ∧ cargo_check_ok gate
     // in tools_patch_graph::refresh_derived_artifacts_after_cargo_check.
 
+    // Refresh recovery gap blockers from the latest graph.json before scoring
+    // so compute_blocker_class_coverage sees current structural gaps.
+    crate::recovery_gap_analysis::analyze_and_record_recovery_gaps(workspace);
+
     let (eval, eval_delta) = crate::eval_driver::run(workspace, None)
         .unwrap_or_else(|_| (crate::evaluation::evaluate_workspace(workspace), None));
     let drift = compute_and_persist_fingerprint_drift(workspace, &current_summaries)?;
