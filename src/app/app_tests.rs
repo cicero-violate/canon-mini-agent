@@ -12,6 +12,7 @@ mod tests {
         route_gate_recovery_budget_exhaustion, route_gate_recovery_decision,
         planner_completion_allows_executor_dispatch, semantic_action_fingerprint,
         should_reject_solo_self_complete, submitted_turn_timeout_recovery_decision,
+        summarize_inbound_message,
         RecordedMessageKind,
         take_external_user_message_without_writer, take_inbound_message_without_writer,
         verifier_confirmed_with_plan_text, ActionProvenance,
@@ -89,6 +90,36 @@ mod tests {
             mismatch < rebound && rebound < register,
             "submit ack mismatch must rebind the active tab before turn registration"
         );
+    }
+
+    #[test]
+    fn inbound_handoff_summary_has_section_spacing() {
+        let inbound = json!({
+            "from": "executor",
+            "to": "planner",
+            "type": "handoff",
+            "status": "complete",
+            "observation": "executor completed turn 9 on lane executor_pool",
+            "payload": {
+                "summary": "Executor completion: apply_patch ok",
+                "executor_result": "apply_patch ok\nrun_command cargo check -p canon-mini-agent\nprojection_refresh: cargo check passed"
+            },
+            "predicted_next_actions": [
+                {"action": "plan", "intent": "update the task graph based on executor completion evidence"}
+            ]
+        })
+        .to_string();
+
+        let summary = summarize_inbound_message(&inbound, "planner");
+        assert!(summary.contains(
+            "observation: executor completed turn 9 on lane executor_pool\n\nsummary: Executor completion: apply_patch ok"
+        ));
+        assert!(summary.contains(
+            "summary: Executor completion: apply_patch ok\n\nexecutor_result_highlights:"
+        ));
+        assert!(summary.contains(
+            "projection_refresh: cargo check passed\n\npredicted_next_actions:"
+        ));
     }
 
     #[test]

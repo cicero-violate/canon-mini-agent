@@ -850,6 +850,18 @@ pub(super) fn append_executor_result_summary(out: &mut String, executor_result: 
     }
 }
 
+fn append_prompt_section_gap(out: &mut String) {
+    if out.is_empty() {
+        return;
+    }
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    if !out.ends_with("\n\n") {
+        out.push('\n');
+    }
+}
+
 /// Intent: pure_transform
 /// Resource: error
 /// Inputs: &str, &str
@@ -872,6 +884,7 @@ pub(super) fn summarize_inbound_message(inbound: &str, role: &str) -> String {
     append_inbound_text_field(&mut out, &value, "intent", 240);
     append_inbound_text_field(&mut out, &value, "observation", 280);
     if let Some(payload) = value.get("payload").and_then(Value::as_object) {
+        append_prompt_section_gap(&mut out);
         append_inbound_payload_summary(&mut out, payload);
     }
     if let Some(next_actions) = value
@@ -880,6 +893,7 @@ pub(super) fn summarize_inbound_message(inbound: &str, role: &str) -> String {
     {
         let rendered = render_predicted_next_actions(next_actions, role);
         if !rendered.is_empty() {
+            append_prompt_section_gap(&mut out);
             out.push_str("predicted_next_actions:\n");
             out.push_str(&rendered.join("\n"));
             out.push('\n');
@@ -910,6 +924,7 @@ fn append_inbound_payload_summary(out: &mut String, payload: &serde_json::Map<St
     if let Some(executor_result) = payload.get("executor_result").and_then(Value::as_str) {
         let executor_result = executor_result.trim();
         if !executor_result.is_empty() {
+            append_prompt_section_gap(out);
             append_executor_result_summary(out, executor_result);
         }
     }

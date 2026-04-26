@@ -154,7 +154,7 @@ pub fn semantic_state_snapshot_from_tlog(workspace: &Path) -> String {
 
     let mut out = String::new();
     out.push_str(&format!(
-        "events={} control={} effect={} source={}\n",
+        "events={} control={} effect={} source={}\n\n",
         events.len(),
         control_count,
         effect_count,
@@ -362,6 +362,7 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
             predicate
         ));
     }
+    out.push('\n');
     if counts.promoted > 0 {
         out.push_str(
             "Required lifecycle decision: promoted invariants must be handled with \
@@ -375,13 +376,14 @@ or {\"action\":\"invariants\",\"op\":\"collapse\",\"id\":\"...\"} when the root 
 or converted into a source patch task against src/invariant_discovery.rs when synthesis is incomplete.\n",
         );
     }
+    out.push('\n');
     out.push_str(
         "Update path: do not apply_patch agent_state/enforced_invariants.json directly; it is a projection. \
 New discovered invariants must be synthesized by source code through \
 src/invariant_discovery.rs::maybe_synthesize_invariants and persisted through the enforced-invariants projector. \
 The invariants action only supports lifecycle ops on existing entries: read, promote, enforce, collapse.\n",
     );
-    out.push_str("Full detail: {\"action\":\"invariants\",\"op\":\"read\"}");
+    out.push_str("\nFull detail: {\"action\":\"invariants\",\"op\":\"read\"}");
     out
 }
 

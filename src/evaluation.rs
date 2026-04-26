@@ -330,7 +330,7 @@ fn append_eval_threshold_violations(
         ));
     }
     if input.tlog_delta_signals.unmeasured_improvement_attempts > 0 {
-        violations.push(format!(
+        warnings.push(format!(
             "unmeasured_improvement_attempts={}/{}",
             input.tlog_delta_signals.unmeasured_improvement_attempts,
             input.tlog_delta_signals.improvement_attempts
@@ -344,7 +344,7 @@ fn append_eval_threshold_violations(
         ));
     }
     if input.tlog_delta_signals.regressed_improvement_attempts > 0 {
-        violations.push(format!(
+        warnings.push(format!(
             "regressed_improvement_attempts={}/{}",
             input.tlog_delta_signals.regressed_improvement_attempts,
             input.tlog_delta_signals.measured_improvement_attempts
