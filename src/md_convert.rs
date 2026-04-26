@@ -105,24 +105,20 @@ fn parse_invariants_md(text: &str) -> InvariantsReport {
         meta: &mut Vec<String>,
         section: &mut InvariantSection,
     ) -> bool {
-        if title.eq_ignore_ascii_case("math") {
+        if let Some(next_section) = if title.eq_ignore_ascii_case("math") {
+            Some(InvariantSection::Math)
+        } else if title.starts_with("Additional Exhaustive") {
+            Some(InvariantSection::Body)
+        } else {
+            None
+        } {
             return switch_invariant_section(
                 current_title,
                 current_clauses,
                 current_desc,
                 invariants,
                 section,
-                InvariantSection::Math,
-            );
-        }
-        if title.starts_with("Additional Exhaustive") {
-            return switch_invariant_section(
-                current_title,
-                current_clauses,
-                current_desc,
-                invariants,
-                section,
-                InvariantSection::Body,
+                next_section,
             );
         }
         if title.starts_with("Meta-Level")
