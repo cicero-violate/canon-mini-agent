@@ -432,11 +432,7 @@ fn summarize_invariant_status_counts(
 /// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn build_eval_header(workspace: &Path) -> String {
-    let path = workspace
-        .join("agent_state")
-        .join("reports")
-        .join("complexity")
-        .join("latest.json");
+    let path = eval_report_path(workspace);
     let Some(report) = load_complexity_report(&path) else {
         return String::new();
     };
@@ -452,53 +448,7 @@ fn build_eval_header(workspace: &Path) -> String {
     let get_u64 = |key: &str| eval.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
     let get_str = |key: &str| eval.get(key).and_then(|v| v.as_str()).unwrap_or("");
     let overall = get_f64("overall_score");
-    let semantic_metrics = crate::semantic_contract::load_semantic_manifest_metrics(workspace);
-    let live_semantic_available = semantic_metrics.fn_total > 0;
-    let semantic_contract = if live_semantic_available {
-        semantic_metrics.score()
-    } else {
-        get_f64("semantic_contract")
-    };
-    let semantic_fn_total = if live_semantic_available {
-        semantic_metrics.fn_total as u64
-    } else {
-        get_u64("semantic_fn_total")
-    };
-    let semantic_fn_with_any_error = if live_semantic_available {
-        semantic_metrics.fn_with_any_error as u64
-    } else {
-        get_u64("semantic_fn_with_any_error")
-    };
-    let semantic_fn_error_rate = if live_semantic_available {
-        semantic_metrics.fn_error_rate
-    } else {
-        get_f64("semantic_fn_error_rate")
-    };
-    let semantic_fn_intent_classified = if live_semantic_available {
-        semantic_metrics.fn_intent_classified as u64
-    } else {
-        get_u64("semantic_fn_intent_classified")
-    };
-    let semantic_fn_low_confidence = if live_semantic_available {
-        semantic_metrics.fn_low_confidence as u64
-    } else {
-        get_u64("semantic_fn_low_confidence")
-    };
-    let semantic_fn_intent_coverage = if live_semantic_available {
-        semantic_metrics.fn_intent_coverage
-    } else {
-        get_f64("semantic_fn_intent_coverage")
-    };
-    let semantic_fn_low_confidence_rate = if live_semantic_available {
-        semantic_metrics.fn_low_confidence_rate
-    } else {
-        get_f64("semantic_fn_low_confidence_rate")
-    };
-    let semantic_fn_totalized = semantic_fn_intent_classified
-        .saturating_add(semantic_fn_low_confidence)
-        .min(semantic_fn_total);
-    let semantic_fn_totalization_coverage =
-        ratio(semantic_fn_totalized as usize, semantic_fn_total as usize);
+    let semantic = eval_header_semantic_summary(workspace, eval);
     let objectives_ratio = live_done_total_ratio(workspace.join(OBJECTIVES_FILE), "objectives");
     let tasks_ratio = live_done_total_ratio(workspace.join(MASTER_PLAN_FILE), "tasks");
     let objective_progress = objectives_ratio
@@ -532,7 +482,7 @@ fn build_eval_header(workspace: &Path) -> String {
             "structural_invariant_coverage",
             get_f64("structural_invariant_coverage"),
         ),
-        ("semantic_contract", semantic_contract),
+        ("semantic_contract", semantic.semantic_contract),
     ];
 
     let (weakest_name, weakest_val) = dims
@@ -568,7 +518,7 @@ fn build_eval_header(workspace: &Path) -> String {
     format!(
         "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \
 objectives={objectives}  tasks={tasks}\n\
-semantic_contract={semantic_contract:.3}  \
+        semantic_contract={semantic_contract:.3}  \
 semantic_errors={semantic_fn_with_any_error}/{semantic_fn_total}({semantic_fn_error_rate:.4})  \
 semantic_intent={semantic_fn_intent_classified}/{semantic_fn_total}({semantic_fn_intent_coverage:.4})  \
 semantic_totalized={semantic_fn_totalized}/{semantic_fn_total}({semantic_fn_totalization_coverage:.4})  \
@@ -604,7 +554,64 @@ recovery_suppressed={recovery_suppressed}\n\
         recovery_attempts = get_u64("recovery_attempts"),
         recovery_failures = get_u64("recovery_failures"),
         recovery_suppressed = get_u64("recovery_suppressed"),
+        semantic_contract = semantic.semantic_contract,
+        semantic_fn_with_any_error = semantic.fn_with_any_error,
+        semantic_fn_total = semantic.fn_total,
+        semantic_fn_error_rate = semantic.fn_error_rate,
+        semantic_fn_intent_classified = semantic.fn_intent_classified,
+        semantic_fn_intent_coverage = semantic.fn_intent_coverage,
+        semantic_fn_totalized = semantic.fn_totalized,
+        semantic_fn_totalization_coverage = semantic.fn_totalization_coverage,
+        semantic_fn_low_confidence = semantic.fn_low_confidence,
+        semantic_fn_low_confidence_rate = semantic.fn_low_confidence_rate,
     )
+}
+
+fn eval_report_path(workspace: &Path) -> std::path::PathBuf {
+    workspace
+        .join("agent_state")
+        .join("reports")
+        .join("complexity")
+        .join("latest.json")
+}
+
+struct EvalHeaderSemanticSummary {
+    semantic_contract: f64,
+    fn_total: u64,
+    fn_with_any_error: u64,
+    fn_error_rate: f64,
+    fn_intent_classified: u64,
+    fn_low_confidence: u64,
+    fn_intent_coverage: f64,
+    fn_low_confidence_rate: f64,
+    fn_totalized: u64,
+    fn_totalization_coverage: f64,
+}
+
+fn eval_header_semantic_summary(
+    workspace: &Path,
+    eval: &serde_json::Map<String, serde_json::Value>,
+) -> EvalHeaderSemanticSummary {
+    let get_f64 = |key: &str| eval.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let get_u64 = |key: &str| eval.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
+    let metrics = crate::semantic_contract::load_semantic_manifest_metrics(workspace);
+    let live = metrics.fn_total > 0;
+    let fn_total = if live { metrics.fn_total as u64 } else { get_u64("semantic_fn_total") };
+    let fn_intent_classified = if live { metrics.fn_intent_classified as u64 } else { get_u64("semantic_fn_intent_classified") };
+    let fn_low_confidence = if live { metrics.fn_low_confidence as u64 } else { get_u64("semantic_fn_low_confidence") };
+    let fn_totalized = fn_intent_classified.saturating_add(fn_low_confidence).min(fn_total);
+    EvalHeaderSemanticSummary {
+        semantic_contract: if live { metrics.score() } else { get_f64("semantic_contract") },
+        fn_total,
+        fn_with_any_error: if live { metrics.fn_with_any_error as u64 } else { get_u64("semantic_fn_with_any_error") },
+        fn_error_rate: if live { metrics.fn_error_rate } else { get_f64("semantic_fn_error_rate") },
+        fn_intent_classified,
+        fn_low_confidence,
+        fn_intent_coverage: if live { metrics.fn_intent_coverage } else { get_f64("semantic_fn_intent_coverage") },
+        fn_low_confidence_rate: if live { metrics.fn_low_confidence_rate } else { get_f64("semantic_fn_low_confidence_rate") },
+        fn_totalized,
+        fn_totalization_coverage: ratio(fn_totalized as usize, fn_total as usize),
+    }
 }
 
 fn eval_score_directive(weakest_name: &str) -> &'static str {
