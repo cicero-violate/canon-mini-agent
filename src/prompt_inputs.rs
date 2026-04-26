@@ -519,7 +519,7 @@ fn build_eval_header(workspace: &Path) -> String {
     let eval_focus =
         eval_focus_line(weakest_name, weakest_val, &objectives, &tasks, eval_gate, directive);
 
-    format!(
+    let mut header = format!(
         "EVAL score={overall:.3}  weakest={weakest_name}({weakest_val:.3})  \
 objectives={objectives}  tasks={tasks}\n\
 eval_focus={eval_focus}\n\
@@ -573,7 +573,9 @@ recovery_suppressed={recovery_suppressed}\n\
         semantic_fn_totalization_coverage = semantic.fn_totalization_coverage,
         semantic_fn_low_confidence = semantic.fn_low_confidence,
         semantic_fn_low_confidence_rate = semantic.fn_low_confidence_rate,
-    )
+    );
+    header.push_str(&crate::metric_instructions::render_weak_blocks(eval, 3));
+    header
 }
 
 fn weakest_eval_dimension<'a>(dims: &'a [(&'a str, f64)]) -> (&'a str, f64) {

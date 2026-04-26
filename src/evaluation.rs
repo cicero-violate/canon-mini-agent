@@ -844,7 +844,10 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                     if regressed {
                         signals.regressed_improvement_attempts = signals
                             .regressed_improvement_attempts
-                            .saturating_add(pending_improvement_attempts);
+                            .saturating_add(1);
+                        signals.non_regressed_improvement_attempts = signals
+                            .non_regressed_improvement_attempts
+                            .saturating_add(pending_improvement_attempts.saturating_sub(1));
                     } else {
                         signals.non_regressed_improvement_attempts = signals
                             .non_regressed_improvement_attempts
