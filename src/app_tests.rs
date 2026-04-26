@@ -948,4 +948,25 @@ mod tests {
             "stale-lane cleanup must be observable in orchestrator logs"
         );
     }
+
+    #[test]
+    fn checkpoint_resume_purges_unresumable_submitted_turns() {
+        // Regression: after a forced restart, tlog replay restored submitted_turn_ids
+        // but the Chromium pending lease map and Rust joinsets were empty. The next
+        // assistant frame was ignored as unowned_tab_without_pending_turn and the lane
+        // stayed in_progress forever.
+        let source = include_str!("app_runtime_completion.rs");
+        assert!(
+            source.contains("purge_unresumable_submitted_turns_after_replay"),
+            "restart recovery must purge submitted turns that cannot be resumed"
+        );
+        assert!(
+            source.contains("OUTBOUND_INBOUND_IGNORED/unowned_tab_without_pending_turn"),
+            "the observed ignored-frame failure mode must be documented near the purge"
+        );
+        assert!(
+            source.contains("checkpoint loaded after process restart"),
+            "checkpoint-loaded restarts must be covered, not only discarded checkpoints"
+        );
+    }
 }

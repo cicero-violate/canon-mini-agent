@@ -715,7 +715,7 @@ fn recover_stale_executor_lanes_after_replay(
     requeue_orphaned_in_progress_lanes(writer, lanes, workspace);
     seed_planner_after_discarded_checkpoint(writer, checkpoint_loaded);
     clear_stale_lane_inflight_flags(writer, rt);
-    purge_discarded_checkpoint_submitted_turns(writer, checkpoint_loaded);
+    purge_unresumable_submitted_turns_after_replay(writer, rt, checkpoint_loaded);
     requeue_phantom_executor_lanes(writer, rt);
 }
 
@@ -818,21 +818,33 @@ fn clear_stale_lane_inflight_flags(writer: &mut CanonicalWriter, rt: &RuntimeSta
     }
 }
 
-fn purge_discarded_checkpoint_submitted_turns(
+fn purge_unresumable_submitted_turns_after_replay(
     writer: &mut CanonicalWriter,
+    rt: &RuntimeState,
     checkpoint_loaded: bool,
 ) {
-    // When checkpoint resume is discarded (seq mismatch), runtime joinsets are empty and we
-    // cannot safely continue replayed submitted_turn_ids from a prior process. Purge them so
-    // stale-lane recovery can requeue lanes instead of staying phantom-busy forever.
-    if checkpoint_loaded || writer.state().submitted_turn_ids.is_empty() {
+    // Runtime-only joinsets and Chromium pending lease maps do not survive process restart.
+    // Tlog replay can still restore submitted_turn_ids, making a lane look live even though
+    // the restarted runtime cannot receive that completion. Purge those unresumable turns
+    // so stale-lane recovery requeues the lane instead of idling with
+    // OUTBOUND_INBOUND_IGNORED/unowned_tab_without_pending_turn forever.
+    if writer.state().submitted_turn_ids.is_empty() {
+        return;
+    }
+    if checkpoint_loaded && !rt.submitted_turns.is_empty() {
         return;
     }
 
     let stale_keys: Vec<String> = writer.state().submitted_turn_ids.keys().cloned().collect();
+    let reason = if checkpoint_loaded {
+        "checkpoint loaded after process restart"
+    } else {
+        "checkpoint discarded"
+    };
     eprintln!(
-        "[orchestrate] checkpoint discarded — dropping {} stale submitted turn ids",
-        stale_keys.len()
+        "[orchestrate] {} — dropping {} unresumable submitted turn ids",
+        reason,
+        stale_keys.len(),
     );
     for key in stale_keys {
         let Some((tab_str, turn_str)) = key.split_once(':') else {
