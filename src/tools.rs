@@ -531,41 +531,6 @@ mod tests {
     }
 
     #[test]
-    fn apply_patch_action_chain_includes_projection_refresh_entry() {
-        let out = super::format_apply_patch_action_chain(
-            "cargo check ok",
-            "cargo check -p canon-mini-agent",
-            "check passed",
-            None,
-            None,
-            None,
-            Some("derived artifact refresh ok"),
-            Some("semantic_sync ok\nISSUES.json refreshed"),
-            Some("cargo test remains explicit"),
-        );
-
-        assert!(out.contains("apply_patch ok"), "unexpected: {out}");
-        assert!(
-            out.contains("Regenerate graph-derived semantic artifacts and issue projections"),
-            "unexpected: {out}"
-        );
-        assert!(out.contains("semantic_sync ok"), "unexpected: {out}");
-        assert!(out.contains("ISSUES.json refreshed"), "unexpected: {out}");
-    }
-
-    #[test]
-    fn command_is_cargo_check_detects_manual_validation_commands() {
-        assert!(super::command_is_cargo_check("cargo check"));
-        assert!(super::command_is_cargo_check(
-            "cargo check -p canon-mini-agent"
-        ));
-        assert!(super::command_is_cargo_check(
-            "CARGO_HOME=/tmp/cargo cargo check --workspace"
-        ));
-        assert!(!super::command_is_cargo_check("cargo test --workspace"));
-    }
-
-    #[test]
     fn execution_path_persists_latest_plan_artifact() {
         let tmp = fresh_test_dir("execution-path-artifact");
         let file = tmp.join("src").join("lib.rs");

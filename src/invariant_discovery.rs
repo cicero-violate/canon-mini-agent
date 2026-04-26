@@ -1569,20 +1569,12 @@ fn scan_tlog_invariant_lifecycle_gap(file: std::fs::File) -> TlogInvariantLifecy
         let Some(event) = record.get("event").and_then(|value| value.get("event")) else {
             continue;
         };
-        let kind = event
-            .get("kind")
-            .and_then(|value| value.as_str())
-            .unwrap_or("");
+        let event_str = |key: &str| event.get(key).and_then(|value| value.as_str()).unwrap_or("");
+        let kind = event_str("kind");
         match kind {
             "action_result_recorded" => {
-                let role = event
-                    .get("role")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("");
-                let action_kind = event
-                    .get("action_kind")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("");
+                let role = event_str("role");
+                let action_kind = event_str("action_kind");
                 if role.starts_with("planner") {
                     counts.planner_action_results += 1;
                 }

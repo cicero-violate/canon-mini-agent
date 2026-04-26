@@ -1493,8 +1493,9 @@ pub(crate) fn validate_message_action(action: &Value, mode: MessageValidationMod
     validate_blocker_message_payload(&msg)?;
     validate_message_route(&msg)?;
     validate_optional_message_severity(obj)?;
-    validate_optional_message_role(obj, "from_role")?;
-    validate_optional_message_role(obj, "to_role")?;
+    for field in ["from_role", "to_role"] {
+        validate_optional_message_role(obj, field)?;
+    }
     Ok(())
 }
 

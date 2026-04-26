@@ -2155,6 +2155,12 @@ struct SupervisorArgs {
     filtered_args: Vec<String>,
 }
 
+/// Intent: canonical_read
+/// Resource: cli_args
+/// Inputs: CLI argument vector and flag name
+/// Outputs: cloned value immediately following the named flag, when present
+/// Effects: none
+/// Invariants: deterministic for identical argument order
 fn take_flag_value(args: &[String], flag: &str) -> Option<String> {
     args.windows(2).find(|w| w[0] == flag).map(|w| w[1].clone())
 }

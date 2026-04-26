@@ -356,18 +356,22 @@ fn summarize_enforced_invariants_for_prompt(raw: &str) -> String {
         ));
     }
     out.push('\n');
-    if counts.promoted > 0 {
-        out.push_str(
+    if let Some(lifecycle_decision) = if counts.promoted > 0 {
+        Some(
             "Required lifecycle decision: promoted invariants must be handled with \
 {\"action\":\"invariants\",\"op\":\"enforce\",\"id\":\"...\"} when the predicate is valid, \
 or {\"action\":\"invariants\",\"op\":\"collapse\",\"id\":\"...\"} when the root cause is gone.\n",
-        );
+        )
     } else if counts.discovered > 0 {
-        out.push_str(
+        Some(
             "Required lifecycle decision: discovered invariants should be promoted with \
 {\"action\":\"invariants\",\"op\":\"promote\",\"id\":\"...\"} after source/tlog review, \
 or converted into a source patch task against src/invariant_discovery.rs when synthesis is incomplete.\n",
-        );
+        )
+    } else {
+        None
+    } {
+        out.push_str(lifecycle_decision);
     }
     out.push('\n');
     out.push_str(
@@ -764,12 +768,12 @@ fn build_plan_verify_summary(workspace: &Path) -> String {
         let verified_ids: Vec<&str> = obj
             .repair_plan_ids
             .iter()
-            .filter(|pid| {
+            .filter_map(|pid| {
                 outcomes
                     .iter()
-                    .any(|(id, passed, _)| id == *pid && *passed)
+                    .any(|(id, passed, _)| id == pid && *passed)
+                    .then_some(pid.as_str())
             })
-            .map(|s| s.as_str())
             .collect();
         if !verified_ids.is_empty() {
             lines.push(format_objective_repair_plan_verify_summary(obj, &verified_ids));
@@ -2353,18 +2357,19 @@ pub fn load_single_role_inputs(
     _is_diagnostics: bool,
     is_planner: bool,
 ) -> Result<SingleRoleInputs> {
-    let (role, prompt_kind) = if is_verifier || is_planner {
+    let use_planner_inputs = is_verifier || is_planner;
+    let (role, prompt_kind) = if use_planner_inputs {
         ("mini_planner", AgentPromptKind::Planner)
     } else {
         ("executor", AgentPromptKind::Executor)
     };
 
-    let primary_input_path = if is_verifier || is_planner {
+    let primary_input_path = if use_planner_inputs {
         ctx.spec_path
     } else {
         ctx.master_plan_path
     };
-    let primary_input_name = if is_verifier || is_planner {
+    let primary_input_name = if use_planner_inputs {
         SPEC_FILE.to_string()
     } else {
         MASTER_PLAN_FILE.to_string()

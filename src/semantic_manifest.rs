@@ -291,11 +291,17 @@ fn parse_doc_contract(lines: &[String]) -> DocContract {
         match key.as_str() {
             "intent" => out.intent = Some(val.to_string()),
             "resource" => out.resource = Some(val.to_string()),
-            "inputs" => out.inputs = split_csv(val),
-            "outputs" => out.outputs = split_csv(val),
-            "effects" => out.effects = split_csv(val),
-            "forbidden" => out.forbidden = split_csv(val),
-            "invariants" => out.invariants = split_csv(val),
+            "inputs" | "outputs" | "effects" | "forbidden" | "invariants" => {
+                let values = split_csv(val);
+                match key.as_str() {
+                    "inputs" => out.inputs = values,
+                    "outputs" => out.outputs = values,
+                    "effects" => out.effects = values,
+                    "forbidden" => out.forbidden = values,
+                    "invariants" => out.invariants = values,
+                    _ => unreachable!(),
+                }
+            }
             "failure" | "errors" => out.failure = Some(val.to_string()),
             "provenance" => out.provenance = split_plus(val),
             _ => {}

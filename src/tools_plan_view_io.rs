@@ -775,33 +775,6 @@ pub(crate) fn patch_scope_error(role: &str, patch: &str) -> Option<String> {
     patch_scope_error_with_mode(role, patch, is_self_modification_mode())
 }
 
-/// Walk up from `file_path` (workspace-relative) to find the nearest Cargo.toml.
-/// Returns the package name from that manifest, or None if not found.
-fn infer_crate_for_patch(workspace: &Path, file_path: &str) -> Option<String> {
-    let mut dir = workspace.join(file_path);
-    dir.pop(); // start from parent of the file
-    loop {
-        let manifest = dir.join("Cargo.toml");
-        if manifest.exists() {
-            let text = std::fs::read_to_string(&manifest).ok()?;
-            for line in text.lines() {
-                if let Some(rest) = line.strip_prefix("name") {
-                    let name = rest.trim().trim_start_matches('=').trim().trim_matches('"');
-                    if !name.is_empty() {
-                        return Some(name.to_string());
-                    }
-                }
-            }
-        }
-        if dir == workspace {
-            break;
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    None
-}
 
 // ── Patch-anchor auto-read (mirrors harness_repair logic) ─────────────────────
 

@@ -152,152 +152,19 @@ fn schema_guarded_patch_validation_failure(
     (false, err_msg)
 }
 
-fn run_patch_crate_verification_command(
-    role: &str,
-    step: usize,
-    workspace: &Path,
-    display_cmd: &str,
-    cmd: &str,
-    ok_label: &'static str,
-    fail_label: &'static str,
-) -> (bool, String, &'static str) {
-    eprintln!("[{role}] step={} {display_cmd}", step);
-    let (ok, out) = exec_run_command(workspace, cmd, crate::constants::workspace())
-        .unwrap_or_else(|e| (false, e.to_string()));
-    let label = if ok { ok_label } else { fail_label };
-    eprintln!("[{role}] step={} {label}", step);
-    (ok, out, label)
-}
 
-/// Intent: pure_transform
-/// Resource: chained_action_entry
-/// Inputs: usize, &str, &str, &str, std::option::Option<&str>, &str
-/// Outputs: std::string::String
-/// Effects: none
-/// Forbidden: mutation
-/// Invariants: formats action metadata and optional command before indented result lines; trims trailing newline
-/// Failure: none
-/// Provenance: rustc:facts + rustc:docstring
-fn format_chained_action_entry(
-    index: usize,
-    action: &str,
-    status: &str,
-    intent: &str,
-    command: Option<&str>,
-    result: &str,
-) -> String {
-    let mut entry =
-        format!("{index}. action: {action}\n   status: {status}\n   intent: {intent}\n");
-    if let Some(cmd) = command {
-        entry.push_str(&format!("   command: {cmd}\n"));
-    }
-    entry.push_str("   result:\n");
-    for line in result.lines() {
-        entry.push_str("     ");
-        entry.push_str(line);
-        entry.push('\n');
-    }
-    entry.trim_end().to_string()
-}
-
-/// Intent: pure_transform
-/// Resource: error
-/// Inputs: &str, &str, &str, std::option::Option<&str>, std::option::Option<&str>, std::option::Option<&str>, std::option::Option<&str>
-/// Outputs: std::string::String
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
-/// Provenance: rustc:facts + rustc:docstring
-fn format_apply_patch_action_chain(
-    check_label: &str,
-    check_cmd: &str,
-    check_out: &str,
-    test_label: Option<&str>,
-    test_cmd: Option<&str>,
-    test_out: Option<&str>,
-    refresh_label: Option<&str>,
-    refresh_out: Option<&str>,
-    extra_note: Option<&str>,
-) -> String {
-    let mut sections = vec![
-        "apply_patch ok".to_string(),
-        "Chained action transcript:".to_string(),
-        format_chained_action_entry(
-            1,
-            "apply_patch",
-            "ok",
-            "Apply the requested source mutation.",
-            None,
-            "Patch applied successfully.",
-        ),
-        format_chained_action_entry(
-            2,
-            "run_command",
-            action_chain_status(check_label),
-            "Auto-verify the patched crate compiles after the edit.",
-            Some(check_cmd),
-            truncate(check_out, MAX_SNIPPET),
-        ),
-    ];
-
-    if let (Some(test_label), Some(test_cmd), Some(test_out)) = (test_label, test_cmd, test_out) {
-        sections.push(format_chained_action_entry(
-            3,
-            "run_command",
-            action_chain_status(test_label),
-            "Auto-verify the patched crate tests after the edit.",
-            Some(test_cmd),
-            test_out,
-        ));
-    }
-
-    if let (Some(refresh_label), Some(refresh_out)) = (refresh_label, refresh_out) {
-        let refresh_index = refresh_action_chain_index(test_label);
-        sections.push(format_chained_action_entry(
-            refresh_index,
-            "run_command",
-            action_chain_status(refresh_label),
-            "Regenerate graph-derived semantic artifacts and issue projections after cargo check.",
-            None,
-            truncate(refresh_out, MAX_SNIPPET),
-        ));
-    }
-
-    if let Some(note) = extra_note.filter(|n| !n.trim().is_empty()) {
-        sections.push("Notes:".to_string());
-        sections.push(note.trim().to_string());
-    }
-
-    sections.join("\n\n")
-}
-
-fn refresh_action_chain_index(test_label: Option<&str>) -> usize {
-    if test_label.is_some() { 4 } else { 3 }
-}
-
-fn action_chain_status(label: &str) -> &'static str {
-    if label.ends_with("ok") {
-        "ok"
-    } else {
-        "failed"
-    }
+fn command_is_cargo_check(cmd: &str) -> bool {
+    let normalized = cmd.split_whitespace().collect::<Vec<_>>().join(" ");
+    normalized == "cargo check"
+        || normalized.starts_with("cargo check ")
+        || normalized.contains(" cargo check ")
+        || normalized.ends_with(" cargo check")
 }
 
 fn graph_refresh_fingerprint_path(workspace: &Path) -> PathBuf {
     workspace
         .join("agent_state")
         .join("derived_artifact_refresh.graph.fingerprint")
-}
-
-fn derived_artifact_cache_complete(workspace: &Path) -> bool {
-    workspace.join(ISSUES_FILE).exists()
-        && crate::semantic_contract::sidecar_path(workspace).exists()
-        && crate::semantic_contract::rank_out_path(workspace).exists()
-}
-
-fn graph_content_fingerprint(path: &Path) -> Result<String> {
-    crate::semantic_contract::graph_content_fingerprint(path)
 }
 
 fn read_graph_refresh_fingerprint(workspace: &Path) -> Option<String> {
@@ -316,15 +183,12 @@ fn write_graph_refresh_fingerprint(workspace: &Path, fingerprint: &str) -> Resul
     Ok(())
 }
 
-/// Intent: projection_refresh
-/// Resource: graph.json, safe_patch_candidates.json, semantic_manifest_proposals.json, ISSUES.json
-/// Inputs: &std::path::Path
-/// Outputs: (bool, std::string::String)
-/// Effects: fs_read, fs_write
-/// Forbidden: stale_issue_projection
-/// Invariants: apply_patch_ok_and_cargo_check_ok_refreshes_derived_artifacts
-/// Failure: fail_closed_note
-/// Provenance: rustc:facts + rustc:docstring
+fn derived_artifact_cache_complete(workspace: &Path) -> bool {
+    workspace.join(ISSUES_FILE).exists()
+        && crate::semantic_contract::sidecar_path(workspace).exists()
+        && crate::semantic_contract::rank_out_path(workspace).exists()
+}
+
 fn refresh_derived_artifacts_after_cargo_check(workspace: &Path) -> (bool, String) {
     let mut lines = Vec::new();
     let graph_path = crate::semantic_contract::graph_path(workspace);
@@ -334,10 +198,7 @@ fn refresh_derived_artifacts_after_cargo_check(workspace: &Path) -> (bool, Strin
     ));
 
     match fs::metadata(&graph_path) {
-        Ok(meta) => lines.push(format!(
-            "graph.json present: bytes={}",
-            meta.len()
-        )),
+        Ok(meta) => lines.push(format!("graph.json present: bytes={}", meta.len())),
         Err(err) => {
             lines.push(format!(
                 "graph.json missing/unreadable after cargo check: {err}; ensure canon-rustc-v2/RUSTC_WRAPPER is active"
@@ -346,7 +207,7 @@ fn refresh_derived_artifacts_after_cargo_check(workspace: &Path) -> (bool, Strin
         }
     }
 
-    let graph_fingerprint = match graph_content_fingerprint(&graph_path) {
+    let graph_fingerprint = match crate::semantic_contract::graph_content_fingerprint(&graph_path) {
         Ok(fingerprint) => fingerprint,
         Err(err) => {
             lines.push(format!("graph fingerprint failed: {err:#}"));
@@ -415,227 +276,6 @@ fn refresh_derived_artifacts_after_cargo_check(workspace: &Path) -> (bool, Strin
 
     lines.push("derived artifact refresh ok".to_string());
     (true, lines.join("\n"))
-}
-
-fn command_is_cargo_check(cmd: &str) -> bool {
-    let normalized = cmd.split_whitespace().collect::<Vec<_>>().join(" ");
-    normalized == "cargo check"
-        || normalized.starts_with("cargo check ")
-        || normalized.contains(" cargo check ")
-        || normalized.ends_with(" cargo check")
-}
-
-fn verification_rebind_note(
-    workspace: &Path,
-    crate_name: &str,
-    plan: &Option<crate::semantic::ExecutionPathPlan>,
-    check_out: &str,
-    test_out: &str,
-) -> String {
-    let Some(rebound) =
-        verification_rebind(workspace, crate_name, plan.as_ref(), check_out, test_out)
-    else {
-        return String::new();
-    };
-    let mut note = String::from("\n\nRebound failure target:\n");
-    if let Some(symbol) = rebound.get("symbol").and_then(|v| v.as_str()) {
-        note.push_str(&format!("symbol: {symbol}\n"));
-    }
-    if let (Some(file), Some(line)) = (
-        rebound.get("file").and_then(|v| v.as_str()),
-        rebound.get("line").and_then(|v| v.as_u64()),
-    ) {
-        note.push_str(&format!(
-            "location: {}:{line}\n",
-            crate::semantic::shorten_display_path(file)
-        ));
-    }
-    let rebound_path = execution_plan_rebound_path(workspace, crate_name);
-    if rebound_path.exists() {
-        note.push_str(&format!(
-            "rebound_plan: {}\n",
-            crate::semantic::shorten_display_path(&rebound_path.display().to_string())
-        ));
-    }
-    note
-}
-
-/// Intent: validation_gate
-/// Resource: error
-/// Inputs: &str, usize, &std::path::Path, &str
-/// Outputs: std::option::Option<(bool, std::string::String)>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
-/// Provenance: rustc:facts + rustc:docstring
-fn verify_apply_patch_crate(
-    role: &str,
-    step: usize,
-    workspace: &Path,
-    patch: &str,
-) -> Option<(bool, String)> {
-    let patch_targets = patch_targets(patch);
-    if !patch_targets_include_rust_sources(&patch_targets) {
-        return None;
-    }
-    let crate_for_patch = patch_first_file(patch).and_then(|f| infer_crate_for_patch(workspace, f));
-    let krate = crate_for_patch?;
-    let check_cmd = format!("cargo check -p {krate}");
-
-    let (check_ok, check_out, check_label) = run_patch_crate_verification_command(
-        role,
-        step,
-        workspace,
-        &check_cmd,
-        &check_cmd,
-        "cargo check ok",
-        "cargo check failed",
-    );
-
-    let plan = load_execution_plan(workspace, &krate);
-    if !check_ok {
-        log_execution_learning(
-            workspace,
-            &krate,
-            patch,
-            &plan,
-            check_ok,
-            &check_out,
-            false,
-            None,
-            "",
-        );
-        let rebind_note = verification_rebind_note(workspace, &krate, &plan, &check_out, "");
-        let out = format_apply_patch_action_chain(
-            check_label,
-            &check_cmd,
-            &check_out,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(&rebind_note),
-        );
-        return Some((false, out));
-    }
-    log_execution_learning(
-        workspace,
-        &krate,
-        patch,
-        &plan,
-        check_ok,
-        &check_out,
-        false,
-        None,
-        "",
-    );
-
-    let (refresh_ok, refresh_out) = refresh_derived_artifacts_after_cargo_check(workspace);
-    let refresh_label = if refresh_ok {
-        "derived artifact refresh ok"
-    } else {
-        "derived artifact refresh failed"
-    };
-
-    Some((
-        false,
-        format_apply_patch_action_chain(
-            check_label,
-            &check_cmd,
-            &check_out,
-            None,
-            None,
-            None,
-            Some(refresh_label),
-            Some(&refresh_out),
-            Some("Auto post-patch `cargo test` is disabled; run `cargo_test` explicitly when needed."),
-        ),
-    ))
-}
-
-fn log_execution_learning(
-    workspace: &Path,
-    crate_name: &str,
-    patch: &str,
-    plan: &Option<crate::semantic::ExecutionPathPlan>,
-    check_ok: bool,
-    check_out: &str,
-    cargo_test_ran: bool,
-    test_ok: Option<bool>,
-    test_out: &str,
-) {
-    let record = execution_learning_record(
-        workspace,
-        crate_name,
-        patch,
-        plan,
-        check_ok,
-        check_out,
-        cargo_test_ran,
-        test_ok,
-        test_out,
-    );
-    let _ = append_execution_learning_record(workspace, &record);
-}
-
-fn execution_learning_record(
-    workspace: &Path,
-    crate_name: &str,
-    patch: &str,
-    plan: &Option<crate::semantic::ExecutionPathPlan>,
-    check_ok: bool,
-    check_out: &str,
-    cargo_test_ran: bool,
-    test_ok: Option<bool>,
-    test_out: &str,
-) -> Value {
-    let patch_paths = patch_targets(patch)
-        .into_iter()
-        .map(|path| path.to_string())
-        .collect::<Vec<_>>();
-    let top_target = plan
-        .as_ref()
-        .and_then(|value| serde_json::to_value(&value.top_target).ok())
-        .and_then(|value| if value.is_null() { None } else { Some(value) });
-    let top_target_file = top_target
-        .as_ref()
-        .and_then(|value| value.get("file"))
-        .and_then(|value| value.as_str());
-    let matched_top_target = top_target_file
-        .map(|file| patch_paths.iter().any(|path| path == file))
-        .unwrap_or(false);
-    let verified = if cargo_test_ran {
-        check_ok && test_ok.unwrap_or(false)
-    } else {
-        check_ok
-    };
-    let rebound = if verified {
-        None
-    } else {
-        verification_rebind(workspace, crate_name, plan.as_ref(), check_out, test_out)
-    };
-    json!({
-        "ts_ms": now_ms(),
-        "crate": crate_name,
-        "path_fingerprint": plan.as_ref().map(|value| value.path_fingerprint.clone()),
-        "from": plan.as_ref().map(|value| value.from.clone()),
-        "to": plan.as_ref().map(|value| value.to.clone()),
-        "top_target": top_target,
-        "matched_top_target_file": matched_top_target,
-        "patch_paths": patch_paths,
-        "patch_kind": "apply_patch",
-        "verification": {
-            "cargo_check_ok": check_ok,
-            "cargo_test_ran": cargo_test_ran,
-            "cargo_test_ok": test_ok,
-            "verified": verified,
-        },
-        "rebound_failure": rebound,
-        "check_excerpt": truncate(check_out, MAX_SNIPPET),
-        "test_excerpt": truncate(test_out, MAX_SNIPPET),
-    })
 }
 
 /// Intent: event_append
@@ -764,27 +404,6 @@ fn handle_apply_patch_success(
         return Ok(result);
     }
     eprintln!("[{role}] step={} apply_patch ok", step);
-    if let Some(result) = verify_apply_patch_crate(role, step, workspace, patch) {
-        if let Some(writer) = writer.as_mut() {
-            let target = affected
-                .modified
-                .first()
-                .or_else(|| affected.added.first())
-                .or_else(|| affected.deleted.first())
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "(unknown)".to_string());
-            try_emit_workspace_artifact_effect(
-                writer,
-                false,
-                "apply_patch",
-                "apply",
-                &target,
-                role,
-                patch_signature,
-            )?;
-        }
-        return Ok(result);
-    }
     if let Some(writer) = writer.as_mut() {
         let target = affected
             .modified

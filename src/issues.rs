@@ -599,9 +599,8 @@ pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
         let reasons = collect_stale_reasons(issue, workspace, &receipt_ts, now_ms);
         if !reasons.is_empty() {
             let joined = reasons.join("; ");
-            if issue.freshness_status.trim().to_ascii_lowercase() != "stale"
-                || issue.stale_reason != joined
-            {
+            let freshness_status = issue.freshness_status.trim().to_ascii_lowercase();
+            if freshness_status != "stale" || issue.stale_reason != joined {
                 issue.freshness_status = "stale".to_string();
                 issue.stale_reason = joined;
                 summary.marked_stale += 1;
@@ -613,7 +612,8 @@ pub fn sweep_stale_issues(workspace: &Path) -> Result<IssueSweepSummary> {
         let has_live_validation = !issue.evidence_receipts.is_empty()
             || issue.last_validated_ms > 0
             || !issue.validated_from.is_empty();
-        if has_live_validation && issue.freshness_status.trim().to_ascii_lowercase() != "fresh" {
+        let freshness_status = issue.freshness_status.trim().to_ascii_lowercase();
+        if has_live_validation && freshness_status != "fresh" {
             issue.freshness_status = "fresh".to_string();
             issue.stale_reason.clear();
             summary.refreshed += 1;
@@ -707,11 +707,9 @@ pub fn compute_issue_score(issue: &Issue, all_issues: &[Issue]) -> f32 {
         "state_space",
         "dispatch",
     ];
-    let hot_path: f32 = if hot_path_keywords.iter().any(|kw| combined.contains(kw)) {
-        1.0
-    } else {
-        0.0
-    };
+    let hot_path = hot_path_keywords
+        .iter()
+        .any(|kw| combined.contains(kw)) as u8 as f32;
 
     // Loop-velocity: how much does fixing this unblock the agent's self-improvement loop?
     // See doc comment on compute_issue_score for the full table and rationale.

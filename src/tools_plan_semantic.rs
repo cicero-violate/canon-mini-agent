@@ -100,8 +100,7 @@ fn validate_plan_action_shape(action: &Value, normalized_op: &str) -> Result<()>
         "set_plan_status" => validate_plan_set_plan_status_shape(action, normalized_op),
         "set_task_status" => validate_plan_set_task_status_shape(action, normalized_op),
         "replace_plan" => validate_plan_replace_plan_shape(action, normalized_op),
-        "sorted_view" | "update" => Ok(()),
-        _ => Ok(()),
+        "sorted_view" | "update" | _ => Ok(()),
     }
 }
 
@@ -1813,46 +1812,6 @@ fn persist_execution_path_plan(
     Ok(())
 }
 
-fn execution_plan_rebound_path(workspace: &Path, crate_name: &str) -> PathBuf {
-    execution_reports_dir(workspace).join(format!("{crate_name}.rebound.json"))
-}
-
-/// Intent: canonical_write
-/// Resource: error
-/// Inputs: &std::path::Path, &str, &semantic::ExecutionPathPlan
-/// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: fs_write
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
-/// Provenance: rustc:facts + rustc:docstring
-fn persist_rebound_execution_plan(
-    workspace: &Path,
-    crate_name: &str,
-    plan: &crate::semantic::ExecutionPathPlan,
-) -> Result<()> {
-    let out_path = execution_plan_rebound_path(workspace, crate_name);
-    fs::write(&out_path, serde_json::to_vec_pretty(plan)?)
-        .with_context(|| format!("write {}", out_path.display()))
-}
-
-/// Intent: canonical_read
-/// Resource: error
-/// Inputs: &std::path::Path, &str
-/// Outputs: std::option::Option<semantic::ExecutionPathPlan>
-/// Effects: fs_read
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
-/// Provenance: rustc:facts + rustc:docstring
-fn load_execution_plan(
-    workspace: &Path,
-    crate_name: &str,
-) -> Option<crate::semantic::ExecutionPathPlan> {
-    let path = execution_plan_latest_path(workspace, crate_name);
-    let raw = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&raw).ok()
-}
 
 #[derive(Default)]
 struct LearningBiasStats {
@@ -1929,90 +1888,6 @@ fn apply_learning_bias_to_plan(
         .and_then(crate::semantic::build_apply_patch_template);
 }
 
-/// Intent: event_append
-/// Resource: error
-/// Inputs: &std::path::Path, &serde_json::Value
-/// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: fs_write
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
-/// Provenance: rustc:facts + rustc:docstring
-fn append_execution_learning_record(workspace: &Path, record: &Value) -> Result<()> {
-    let path = execution_learning_path(workspace);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
-    }
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .with_context(|| format!("open {}", path.display()))?;
-    serde_json::to_writer(&mut file, record)
-        .with_context(|| format!("write {}", path.display()))?;
-    file.write_all(b"\n")
-        .with_context(|| format!("newline {}", path.display()))?;
-    Ok(())
-}
-
-/// Intent: pure_transform
-/// Resource: error
-/// Inputs: &str
-/// Outputs: std::option::Option<(std::string::String, u32, u32)>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
-/// Provenance: rustc:facts + rustc:docstring
-fn parse_failure_location(out: &str) -> Option<(String, u32, u32)> {
-    for line in out.lines() {
-        let trimmed = line.trim();
-        let candidate = trimmed.strip_prefix("--> ").unwrap_or(trimmed);
-        let mut parts = candidate.rsplitn(3, ':');
-        let col = parts.next()?.parse::<u32>().ok()?;
-        let line_no = parts.next()?.parse::<u32>().ok()?;
-        let file = parts.next()?.to_string();
-        if file.ends_with(".rs") {
-            return Some((file, line_no, col));
-        }
-    }
-    None
-}
-
-fn verification_rebind(
-    workspace: &Path,
-    crate_name: &str,
-    plan: Option<&crate::semantic::ExecutionPathPlan>,
-    check_out: &str,
-    test_out: &str,
-) -> Option<Value> {
-    let failure_output = if let Some(loc) = parse_failure_location(check_out) {
-        Some((loc, "cargo_check"))
-    } else {
-        parse_failure_location(test_out).map(|loc| (loc, "cargo_test"))
-    }?;
-    let ((file, line, col), source) = failure_output;
-    let idx = crate::semantic::SemanticIndex::load(workspace, crate_name).ok()?;
-    let symbol = idx.symbol_at_file_line(&file, line);
-    let rebound_plan = plan.and_then(|plan| {
-        symbol
-            .as_deref()
-            .and_then(|sym| idx.execution_path_plan(&plan.from, sym).ok())
-    });
-    if let Some(rebound_plan) = &rebound_plan {
-        let _ = persist_rebound_execution_plan(workspace, crate_name, rebound_plan);
-    }
-    Some(json!({
-        "source": source,
-        "file": file,
-        "line": line,
-        "col": col,
-        "symbol": symbol,
-        "rebound_path_fingerprint": rebound_plan.as_ref().map(|plan| plan.path_fingerprint.clone()),
-        "rebound_from": rebound_plan.as_ref().map(|plan| plan.from.clone()),
-        "rebound_to": rebound_plan.as_ref().map(|plan| plan.to.clone()),
-    }))
-}
 
 // ---------------------------------------------------------------------------
 // Semantic navigation handlers (backed by rustc graph.json)

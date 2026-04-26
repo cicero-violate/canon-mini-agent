@@ -455,36 +455,34 @@ fn validate_lane_scoped_transition(
     state: &SystemState,
     event: &ControlEvent,
 ) -> Option<Result<(), String>> {
-    match event {
+    Some(match event {
         ControlEvent::LanePendingSet { lane_id, pending } => {
-            Some(validate_lane_pending_event(state, *lane_id, *pending))
+            validate_lane_pending_event(state, *lane_id, *pending)
         }
         ControlEvent::LaneInProgressSet { lane_id, actor } => {
-            Some(validate_lane_in_progress_event(state, *lane_id, actor))
+            validate_lane_in_progress_event(state, *lane_id, actor)
         }
         ControlEvent::VerifierSummarySet { lane_id, .. } => {
-            Some(validate_verifier_summary_lane(state, *lane_id))
+            validate_verifier_summary_lane(state, *lane_id)
         }
         ControlEvent::LaneVerifierResultSet { lane_id, .. }
         | ControlEvent::LanePlanTextSet { lane_id, .. }
         | ControlEvent::LaneNextSubmitAtSet { lane_id, .. }
         | ControlEvent::LaneStepsUsedSet { lane_id, .. } => {
-            Some(validate_lane_scoped_event(state, *lane_id))
+            validate_lane_scoped_event(state, *lane_id)
         }
-        ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight } => Some(
+        ControlEvent::LaneSubmitInFlightSet { lane_id, in_flight } =>
             validate_lane_submit_in_flight_event(state, *lane_id, *in_flight),
-        ),
-        ControlEvent::LanePromptInFlightSet { lane_id, in_flight } => Some(
+        ControlEvent::LanePromptInFlightSet { lane_id, in_flight } =>
             validate_lane_prompt_in_flight_event(state, *lane_id, *in_flight),
-        ),
         ControlEvent::LaneActiveTabSet { lane_id, tab_id } => {
-            Some(validate_lane_active_tab_set(state, *lane_id, tab_id))
+            validate_lane_active_tab_set(state, *lane_id, tab_id)
         }
         ControlEvent::TabIdToLaneSet { tab_id, lane_id } => {
-            Some(validate_tab_id_to_lane_set(state, tab_id, *lane_id))
+            validate_tab_id_to_lane_set(state, tab_id, *lane_id)
         }
-        _ => None,
-    }
+        _ => return None,
+    })
 }
 
 /// Intent: validation_gate
