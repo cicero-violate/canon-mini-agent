@@ -387,6 +387,8 @@ pub fn canonical_repair_binding_for_key(class_key: &str) -> CanonicalRepairBindi
     );
     let plan_mutation_template = format!(
         "plan(op=create_task|update_task, repair_plan_id=\"{repair_plan_id}\", \
+        required_mutation=\"synthesize_blocker_invariant\", \
+        target_files=[\"src/invariant_discovery.rs\"], \
         status=\"ready\", title=\"{title}\", description=\"{description}\")"
     );
     let persisted_policy = format!(

@@ -153,12 +153,16 @@ pub fn run(
         workspace.join("agent_state").join("enforced_invariants.json"),
     )
     .unwrap_or_default();
+    let plan_text = std::fs::read_to_string(workspace.join(crate::constants::MASTER_PLAN_FILE))
+        .unwrap_or_default();
     let plans = crate::repair_plans::build_all_active_plans(&eval_map, workspace, usize::MAX);
 
     const ESCALATION_THRESHOLD: usize = 3;
 
     for plan in &plans {
-        let passed = plan.machine_verify.check(&eval_map, &invariant_text);
+        let machine_passed = plan.machine_verify.check(&eval_map, &invariant_text);
+        let binding = crate::repair_plans::verify_plan_binding(plan, &plan_text);
+        let passed = machine_passed && binding.passed;
 
         let _ = crate::logging::record_effect_for_workspace(
             workspace,
@@ -166,7 +170,11 @@ pub fn run(
                 plan_id: plan.id.clone(),
                 plan_kind: plan.kind.to_string(),
                 passed,
-                verify_description: plan.machine_verify.description(),
+                verify_description: format!(
+                    "{} AND {}",
+                    plan.machine_verify.description(),
+                    binding.description
+                ),
             },
         );
 
@@ -214,7 +222,10 @@ pub fn run(
             plans
                 .iter()
                 .find(|p| &p.id == pid)
-                .map(|p| p.machine_verify.check(&eval_map, &invariant_text))
+                .map(|p| {
+                    p.machine_verify.check(&eval_map, &invariant_text)
+                        && crate::repair_plans::verify_plan_binding(p, &plan_text).passed
+                })
                 .unwrap_or(false)
         });
         if all_verified {

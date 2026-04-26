@@ -47,15 +47,16 @@ pub fn preflight_ready_tasks(workspace: &Path) -> Vec<PreflightBounce> {
     // has no open task.  This feeds blocker_class_coverage → eval pressure →
     // REPAIR_PLAN → planner creates the missing tasks.
     let missing_tasks = plans_without_open_tasks(workspace);
-    for plan_id in &missing_tasks {
+    for plan_gap in &missing_tasks {
         crate::blockers::record_action_failure_with_writer(
             workspace,
             None,
             "orchestrator",
             "plan_preflight",
             &format!(
-                "active repair plan '{plan_id}' has no open task in PLAN.json — \
-                planner must create a task for this plan before executor dispatch"
+                "active repair plan binding failed: {plan_gap} — planner must \
+                create/update a PLAN task with exact repair_plan_id, \
+                required_mutation, and target_files before executor dispatch"
             ),
             None,
         );
@@ -369,50 +370,18 @@ fn log_preflight_bounces(_workspace: &Path, bounces: &[PreflightBounce]) {
 
 // ── Plan-task gap detection ───────────────────────────────────────────────────
 
-/// Check whether every active repair plan has at least one open task in
-/// PLAN.json.  Returns the ids of plans with no matching open task.
+/// Check whether every active repair plan has a strict PLAN binding.
+/// Returns a planner-readable failure description for each broken binding.
 ///
 /// "Open" means status ∈ {ready, in_progress, needs_planning}.
-/// Matching is by task.repair_plan_id == plan.id (exact).  Legacy heuristic
-/// title/description matching is still accepted for eval_metric/invariant plans,
-/// but blocker_class recovery plans are strict because same failure must map to
-/// the same persisted plan mutation.
+/// Matching requires task.repair_plan_id == plan.id, required_mutation ==
+/// plan.required_mutation, and all target_files required by the repair plan.
 pub fn plans_without_open_tasks(workspace: &Path) -> Vec<String> {
     let plan_raw =
         match std::fs::read_to_string(workspace.join(crate::constants::MASTER_PLAN_FILE)) {
             Ok(s) if !s.trim().is_empty() => s,
             _ => return Vec::new(),
         };
-    let plan_value: serde_json::Value = match serde_json::from_str(&plan_raw) {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
-    let tasks = match plan_value.get("tasks").and_then(|v| v.as_array()) {
-        Some(t) => t,
-        None => return Vec::new(),
-    };
-
-    let open_statuses = ["ready", "in_progress", "needs_planning"];
-
-    // Collect open task bindings and text for matching.
-    let open_task_records: Vec<(String, String)> = tasks
-        .iter()
-        .filter(|t| {
-            t.get("status")
-                .and_then(|v| v.as_str())
-                .map(|s| open_statuses.iter().any(|os| s.eq_ignore_ascii_case(os)))
-                .unwrap_or(false)
-        })
-        .map(|t| {
-            let plan_id = t
-                .get("repair_plan_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("");
-            let desc = t.get("description").and_then(|v| v.as_str()).unwrap_or("");
-            (plan_id.to_string(), format!("{plan_id} {title} {desc}"))
-        })
-        .collect();
 
     // Build active plans from the eval map in latest.json.
     let latest_path = workspace
@@ -436,23 +405,14 @@ pub fn plans_without_open_tasks(workspace: &Path) -> Vec<String> {
 
     plans
         .iter()
-        .filter(|plan| {
-            // Extract the short metric/class/invariant name from the stable id.
-            let name = plan
-                .id
-                .split(':')
-                .nth(1)
-                .unwrap_or(&plan.id);
-            let has_exact_task = open_task_records
-                .iter()
-                .any(|(repair_plan_id, _)| repair_plan_id == &plan.id);
-            let has_legacy_task = plan.kind != "blocker_class" && open_task_records.iter().any(|(_, text)| {
-                text.contains(&plan.id) || text.contains(name)
-            });
-            let has_open_task = has_exact_task || has_legacy_task;
-            !has_open_task
+        .filter_map(|plan| {
+            let binding = crate::repair_plans::verify_plan_binding(plan, &plan_raw);
+            if binding.passed {
+                None
+            } else {
+                Some(format!("{} — {}", plan.id, binding.description))
+            }
         })
-        .map(|plan| plan.id.clone())
         .collect()
 }
 

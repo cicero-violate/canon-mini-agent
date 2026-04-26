@@ -1289,6 +1289,9 @@ fn is_successful_improvement_action(action: &str, result: &str) -> bool {
         return false;
     }
     let result_lower = result.to_ascii_lowercase();
+    if result_lower.contains("revert") || result_lower.contains("regressed") {
+        return false;
+    }
     result_lower.contains("apply_patch ok") || result_lower.contains("patch applied successfully")
 }
 

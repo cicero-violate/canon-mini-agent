@@ -112,6 +112,12 @@ pub struct RepairPlan {
     pub goal: String,
     pub trigger: String,
     pub policy: &'static str,
+    /// Canonical mutation class the PLAN task must carry. This blocks
+    /// heuristic rewrites from satisfying repeated-failure repair plans.
+    pub required_mutation: String,
+    /// Canonical target files the PLAN task must carry when the repair has a
+    /// deterministic implementation surface.
+    pub target_files: Vec<String>,
     pub action: String,
     /// Deterministic PLAN mutation the planner must apply for this plan.
     pub plan_mutation_template: String,
@@ -138,6 +144,8 @@ pub fn render_plan(plan: &RepairPlan) -> String {
         goal: {goal}\n\
         trigger: {trigger}\n\
         policy: {policy}\n\
+        required_mutation: {required_mutation}\n\
+        target_files: {target_files}\n\
         action: {action}\n\
         plan_mutation_template: {plan_mutation_template}\n\
         persisted_policy: {persisted_policy}\n\
@@ -150,6 +158,8 @@ pub fn render_plan(plan: &RepairPlan) -> String {
         goal = plan.goal,
         trigger = plan.trigger,
         policy = plan.policy,
+        required_mutation = plan.required_mutation,
+        target_files = plan.target_files.join(", "),
         action = plan.action,
         plan_mutation_template = plan.plan_mutation_template,
         persisted_policy = plan.persisted_policy,
@@ -166,6 +176,117 @@ pub fn render_active_plans(plans: &[RepairPlan]) -> String {
     }
     let blocks: Vec<String> = plans.iter().map(render_plan).collect();
     format!("\n{}\n", blocks.join("\n\n"))
+}
+
+// ── PLAN binding verifier ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanBindingVerification {
+    pub passed: bool,
+    pub description: String,
+}
+
+/// Verify that a repair plan is represented by an open PLAN task with the same
+/// stable repair_plan_id, required_mutation, and target_files.
+///
+/// This is intentionally stricter than text matching. The convergence rule is:
+/// same failure class → same repair_plan_id → same mutation template.
+pub fn verify_plan_binding(plan: &RepairPlan, plan_text: &str) -> PlanBindingVerification {
+    let plan_json: Value = match serde_json::from_str(plan_text) {
+        Ok(value) => value,
+        Err(err) => {
+            return PlanBindingVerification {
+                passed: false,
+                description: format!("PLAN unreadable for {}: {err}", plan.id),
+            };
+        }
+    };
+    let Some(tasks) = plan_json.get("tasks").and_then(|v| v.as_array()) else {
+        return PlanBindingVerification {
+            passed: false,
+            description: format!("PLAN missing tasks array for {}", plan.id),
+        };
+    };
+
+    let open_statuses = ["ready", "in_progress", "needs_planning"];
+    let exact_tasks: Vec<&Value> = tasks
+        .iter()
+        .filter(|task| {
+            task.get("repair_plan_id")
+                .and_then(|v| v.as_str())
+                .map(|id| id == plan.id)
+                .unwrap_or(false)
+        })
+        .filter(|task| {
+            task.get("status")
+                .and_then(|v| v.as_str())
+                .map(|status| {
+                    open_statuses
+                        .iter()
+                        .any(|allowed| status.eq_ignore_ascii_case(allowed))
+                })
+                .unwrap_or(false)
+        })
+        .collect();
+
+    let Some(task) = exact_tasks.first() else {
+        return PlanBindingVerification {
+            passed: false,
+            description: format!("PLAN missing open task with repair_plan_id={}", plan.id),
+        };
+    };
+
+    let mut missing = Vec::new();
+    let actual_mutation = task
+        .get("required_mutation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if actual_mutation != plan.required_mutation {
+        missing.push(format!(
+            "required_mutation={} (got {})",
+            plan.required_mutation,
+            if actual_mutation.is_empty() {
+                "<missing>"
+            } else {
+                actual_mutation
+            }
+        ));
+    }
+
+    let actual_files: std::collections::BTreeSet<String> = task
+        .get("target_files")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str())
+        .map(|s| s.to_string())
+        .collect();
+    for required_file in &plan.target_files {
+        if !actual_files.contains(required_file) {
+            missing.push(format!("target_files contains {required_file}"));
+        }
+    }
+
+    if missing.is_empty() {
+        PlanBindingVerification {
+            passed: true,
+            description: format!(
+                "PLAN binding ok: repair_plan_id={} required_mutation={} target_files=[{}]",
+                plan.id,
+                plan.required_mutation,
+                plan.target_files.join(",")
+            ),
+        }
+    } else {
+        PlanBindingVerification {
+            passed: false,
+            description: format!(
+                "PLAN binding failed for {}: missing {}",
+                plan.id,
+                missing.join("; ")
+            ),
+        }
+    }
 }
 
 // ── Top-level builder ─────────────────────────────────────────────────────────
@@ -243,6 +364,8 @@ pub fn build_invariant_plans(invariant_text: &str, max: usize) -> Vec<RepairPlan
                     predicate = truncate(&inv.predicate_text, 80),
                 ),
                 policy: "invariant_lifecycle",
+                required_mutation: "invariant_lifecycle".to_string(),
+                target_files: vec!["agent_state/enforced_invariants.json".to_string()],
                 action: format!(
                     "evaluate predicate validity; then: invariants(op=enforce, id={id}) if \
                     valid, invariants(op=collapse, id={id}) if root cause is gone",
@@ -250,6 +373,8 @@ pub fn build_invariant_plans(invariant_text: &str, max: usize) -> Vec<RepairPlan
                 ),
                 plan_mutation_template: format!(
                     "plan(op=create_task|update_task, repair_plan_id=\"invariant:{id}\", \
+                    required_mutation=\"invariant_lifecycle\", \
+                    target_files=[\"agent_state/enforced_invariants.json\"], \
                     status=\"ready\", title=\"Resolve invariant {id}\", \
                     description=\"Enforce or collapse invariant {id} with evidence\")",
                     id = inv.id,
@@ -325,6 +450,8 @@ pub fn build_blocker_class_plans(
                     "{count} occurrences of '{key}' with no matching invariant"
                 ),
                 policy: "synthesize_blocker_invariant",
+                required_mutation: "synthesize_blocker_invariant".to_string(),
+                target_files: vec!["src/invariant_discovery.rs".to_string()],
                 action: format!(
                     "apply canonical mutation first: {template}; then patch \
                     src/invariant_discovery.rs — add detection rule for '{key}' \
@@ -416,13 +543,17 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
                     goal: $goal,
                     trigger: $trigger,
                     policy: $policy,
+                    required_mutation: $policy.to_string(),
+                    target_files: Vec::new(),
                     action: $action,
                     plan_mutation_template: format!(
                         "plan(op=create_task|update_task, repair_plan_id=\"{}\", \
+                        required_mutation=\"{}\", \
                         status=\"ready\", title=\"Improve eval metric {}\", \
                         description=\"Execute the rendered REPAIR_PLAN action and keep \
                         this repair_plan_id bound until machine_verify passes\")",
                         concat!("eval_metric:", $metric),
+                        $policy,
                         $metric,
                     ),
                     persisted_policy: format!(
@@ -982,6 +1113,11 @@ mod tests {
             assert!(!p.verify.is_empty(), "{} empty verify", p.id);
             assert!(!p.goal.is_empty(), "{} empty goal", p.id);
             assert!(!p.trigger.is_empty(), "{} empty trigger", p.id);
+            assert!(
+                !p.required_mutation.is_empty(),
+                "{} empty required_mutation",
+                p.id
+            );
         }
     }
 
@@ -1160,12 +1296,57 @@ mod tests {
         assert!(plans[0]
             .plan_mutation_template
             .contains("repair_plan_id=\"blocker_class:llm_timeout\""));
+        assert_eq!(plans[0].required_mutation, "synthesize_blocker_invariant");
+        assert_eq!(plans[0].target_files, vec!["src/invariant_discovery.rs"]);
         assert!(plans[0]
             .persisted_policy
             .contains("recovery_policy=retire_transport_and_retry"));
         assert!(matches!(&plans[0].machine_verify,
             VerifySpec::FieldNotEquals { key: "blocker_top_uncovered", value }
                 if value == "llm_timeout"));
+    }
+
+    #[test]
+    fn plan_binding_verifier_requires_exact_mutation_and_targets() {
+        let mut plan = build_blocker_class_plans(
+            r#"{"blockers":[{"error_class":"llm_timeout"}]}"#,
+            r#"{"invariants":[]}"#,
+            10,
+        )
+        .remove(0);
+        plan.machine_verify = VerifySpec::FieldNotEquals {
+            key: "blocker_top_uncovered",
+            value: "llm_timeout".to_string(),
+        };
+
+        let good_plan = json!({
+            "tasks": [{
+                "id": "T1",
+                "status": "ready",
+                "repair_plan_id": "blocker_class:llm_timeout",
+                "required_mutation": "synthesize_blocker_invariant",
+                "target_files": ["src/invariant_discovery.rs"]
+            }]
+        })
+        .to_string();
+        assert!(verify_plan_binding(&plan, &good_plan).passed);
+
+        let drifted_plan = json!({
+            "tasks": [{
+                "id": "T1",
+                "status": "ready",
+                "repair_plan_id": "blocker_class:llm_timeout",
+                "required_mutation": "generic_cleanup",
+                "target_files": []
+            }]
+        })
+        .to_string();
+        let result = verify_plan_binding(&plan, &drifted_plan);
+        assert!(!result.passed);
+        assert!(result.description.contains("required_mutation"));
+        assert!(result
+            .description
+            .contains("target_files contains src/invariant_discovery.rs"));
     }
 
     // ── render ────────────────────────────────────────────────────────────────
@@ -1175,7 +1356,7 @@ mod tests {
         let r = render_plan(&build_eval_metric_plans(&all_weak_eval(), 1)[0]);
         for f in &[
             "REPAIR_PLAN", "kind:", "id:", "goal:", "trigger:", "policy:",
-            "action:", "plan_mutation_template:", "persisted_policy:",
+            "required_mutation:", "target_files:", "action:", "plan_mutation_template:", "persisted_policy:",
             "verify:", "machine_verify:", "owner:", "evidence:",
         ] {
             assert!(r.contains(f), "missing: {f}\n{r}");
