@@ -363,17 +363,7 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
             .unwrap_or("")
             .to_string()
     };
-    let get_arr_str = |key: &str| {
-        eval.get(key)
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            })
-            .unwrap_or_default()
-    };
+    let get_arr_str = |key: &str| eval_array_string(eval, key);
 
     let mut plans: Vec<RepairPlan> = Vec::new();
 
@@ -733,6 +723,13 @@ pub fn build_eval_metric_plans(eval: &Map<String, Value>, max: usize) -> Vec<Rep
     sort_repair_plans_by_priority_and_score(&mut plans);
     plans.truncate(max);
     plans
+}
+
+fn eval_array_string(eval: &Map<String, Value>, key: &str) -> String {
+    eval.get(key)
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+        .unwrap_or_default()
 }
 
 fn sort_repair_plans_by_priority_and_score(plans: &mut [RepairPlan]) {

@@ -1573,6 +1573,9 @@ pub fn refresh_issue_artifacts(workspace: &Path) -> Result<()> {
     generate_graph_and_hotspot_issues(workspace);
     generate_refactor_issue_batch(workspace);
     generate_invariant_lifecycle_issues(workspace);
+    // Structural recovery gap analysis: runs after every issue refresh so
+    // graph.json gaps enter blockers.json and feed back into eval pressure.
+    crate::recovery_gap_analysis::analyze_and_record_recovery_gaps(workspace);
     Ok(())
 }
 

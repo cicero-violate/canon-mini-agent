@@ -120,6 +120,10 @@ const SIMPLE_ISSUE_MODES: &[(&str, fn(&Path) -> Result<()>)] = &[
     ("--alpha-only", |workspace| {
         canon_mini_agent::refactor_analysis::generate_alpha_pathway_issues(workspace).map(|_| ())
     }),
+    ("--recovery-gap-only", |workspace| {
+        canon_mini_agent::recovery_gap_analysis::analyze_and_record_recovery_gaps(workspace);
+        Ok(())
+    }),
 ];
 
 fn run_selected_mode(args: &[String], workspace: &PathBuf) -> Option<Result<()>> {
