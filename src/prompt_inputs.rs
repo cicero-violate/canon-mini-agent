@@ -67,7 +67,7 @@ pub struct SemanticPromptArtifacts {
     pub violations_summary: String,
     pub diagnostics_summary: String,
     pub recovery_dashboard: String,
-    /// Eval score header prepended to the issues section.
+    /// Eval score header rendered as its own prompt block.
     /// Shows overall score, weakest dimension, and a direct improvement directive.
     pub eval_header: String,
     #[cfg(test)]
@@ -1077,6 +1077,10 @@ pub fn derive_semantic_control_prompt_state(
     let runtime_state = semantic_state_snapshot_from_tlog(workspace);
     let mut sections = Vec::new();
 
+    if !artifacts.eval_header.trim().is_empty() {
+        sections.push(format!("EVAL HEADER:\n{}", artifacts.eval_header.trim()));
+    }
+
     if !runtime_state.trim().is_empty() {
         sections.push(format!("Runtime semantic state:\n{}", runtime_state.trim()));
     }
@@ -1091,17 +1095,8 @@ pub fn derive_semantic_control_prompt_state(
     if !artifacts.issues_summary.trim().is_empty()
         && artifacts.issues_summary.trim() != "(no open issues)"
     {
-        let issues_header = if artifacts.eval_header.trim().is_empty() {
-            "Projected issues view (derived from semantic prompt state):".to_string()
-        } else {
-            format!(
-                "Projected issues view (derived from semantic prompt state):\n{}",
-                artifacts.eval_header.trim()
-            )
-        };
         sections.push(format!(
-            "{}\n{}",
-            issues_header,
+            "Projected issues view (derived from semantic prompt state):\n{}",
             artifacts.issues_summary.trim()
         ));
     }
@@ -2817,6 +2812,48 @@ mod diagnostics_filter_tests {
         assert!(header.contains("semantic_low_confidence=3(0.3000)"));
         assert!(!header.contains("semantic_errors=5/10(0.5000)"));
         assert!(header.contains("weakest=semantic_contract(0.490)"));
+    }
+
+    #[test]
+    fn semantic_control_renders_eval_header_as_dedicated_block() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "canon-mini-agent-eval-header-block-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        fs::create_dir_all(workspace.join("agent_state/reports/complexity")).unwrap();
+
+        fs::write(
+            workspace.join("agent_state/reports/complexity/latest.json"),
+            r#"{
+  "eval": {
+    "overall_score": 0.426,
+    "objective_progress": 0.0,
+    "task_velocity": 0.727,
+    "issue_health": 0.600,
+    "safety": 1.0,
+    "objectives": "0/1",
+    "tasks": "8/11"
+  }
+}"#,
+        )
+        .unwrap();
+
+        let control = derive_semantic_control_prompt_state(workspace.as_path(), 4);
+        assert!(control
+            .control_summary
+            .contains("EVAL HEADER:\nEVAL score=0.426"));
+        assert!(control
+            .control_summary
+            .contains("weakest=objective_progress(0.000)"));
+        assert!(control.control_summary.contains("eval_focus="));
     }
 
     #[test]

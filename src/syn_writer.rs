@@ -591,6 +591,11 @@ fn resolve_path(root: &Path, p: &Path) -> PathBuf {
     }
 }
 
+/// Intent: identify source lines that begin a Rust free-function declaration.
+/// Inputs: one raw source line.
+/// Outputs: true when the trimmed line starts with a supported fn visibility/qualifier prefix and contains an argument list.
+/// Effects: none.
+/// Invariants: ignores comment lines and non-call-like lines; deterministic for identical input.
 fn is_fn_decl_line(line: &str) -> bool {
     let t = line.trim_start();
     if t.starts_with("//") || !t.contains('(') {
