@@ -1,4 +1,6 @@
 tar -czf canon-mini-agent.tar.gz -C /workspace/ai_sandbox \
+canon-mini-agent/.git \
+canon-mini-agent/.gitignore \
 canon-mini-agent/canon-chromium-extension \
 canon-mini-agent/state/rustc \
 canon-mini-agent/tests \
