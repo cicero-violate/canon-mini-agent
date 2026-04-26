@@ -1831,6 +1831,22 @@ fn build_complexity_report(
         json!(eval.semantic_fn_error_rate),
     );
     eval_report.insert(
+        "semantic_fn_intent_classified".into(),
+        json!(eval.semantic_fn_intent_classified),
+    );
+    eval_report.insert(
+        "semantic_fn_low_confidence".into(),
+        json!(eval.semantic_fn_low_confidence),
+    );
+    eval_report.insert(
+        "semantic_fn_intent_coverage".into(),
+        json!(eval.semantic_fn_intent_coverage),
+    );
+    eval_report.insert(
+        "semantic_fn_low_confidence_rate".into(),
+        json!(eval.semantic_fn_low_confidence_rate),
+    );
+    eval_report.insert(
         "diagnostics_repair_pressure".into(),
         json!(eval.diagnostics_repair_pressure),
     );

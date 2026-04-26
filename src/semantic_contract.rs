@@ -8,11 +8,18 @@ pub struct SemanticManifestMetrics {
     pub fn_total: usize,
     pub fn_with_any_error: usize,
     pub fn_error_rate: f64,
+    pub fn_intent_classified: usize,
+    pub fn_low_confidence: usize,
+    pub fn_intent_coverage: f64,
+    pub fn_low_confidence_rate: f64,
 }
 
 impl SemanticManifestMetrics {
     pub fn score(&self) -> f64 {
-        (1.0 - self.fn_error_rate).clamp(0.0, 1.0)
+        let hard_error_score = (1.0 - self.fn_error_rate).clamp(0.0, 1.0);
+        let coverage_score = self.fn_intent_coverage.clamp(0.0, 1.0);
+        let confidence_score = (1.0 - self.fn_low_confidence_rate).clamp(0.0, 1.0);
+        (hard_error_score * coverage_score * confidence_score).clamp(0.0, 1.0)
     }
 }
 
@@ -41,6 +48,14 @@ struct ProposalFile {
     fn_with_any_error: usize,
     #[serde(default)]
     fn_error_rate: f64,
+    #[serde(default)]
+    fn_intent_classified: usize,
+    #[serde(default)]
+    fn_low_confidence: usize,
+    #[serde(default)]
+    fn_intent_coverage: f64,
+    #[serde(default)]
+    fn_low_confidence_rate: f64,
 }
 
 pub fn sidecar_path(workspace: &Path) -> PathBuf {
@@ -79,10 +94,23 @@ pub fn load_semantic_manifest_metrics(workspace: &Path) -> SemanticManifestMetri
     let Ok(file) = serde_json::from_slice::<ProposalFile>(&raw) else {
         return SemanticManifestMetrics::default();
     };
+    let intent_coverage = if file.fn_total > 0
+        && file.fn_intent_coverage == 0.0
+        && file.fn_intent_classified == 0
+        && file.fn_low_confidence == 0
+    {
+        1.0
+    } else {
+        file.fn_intent_coverage.clamp(0.0, 1.0)
+    };
     SemanticManifestMetrics {
         fn_total: file.fn_total,
         fn_with_any_error: file.fn_with_any_error,
         fn_error_rate: file.fn_error_rate.clamp(0.0, 1.0),
+        fn_intent_classified: file.fn_intent_classified,
+        fn_low_confidence: file.fn_low_confidence,
+        fn_intent_coverage: intent_coverage,
+        fn_low_confidence_rate: file.fn_low_confidence_rate.clamp(0.0, 1.0),
     }
 }
 

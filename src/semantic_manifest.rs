@@ -15,6 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const MISSING: &str = "error";
 const NO_EFFECT: &str = "none";
+const UNKNOWN_LOW_CONFIDENCE: &str = "unknown_low_confidence";
 
 #[derive(Debug, Clone)]
 pub struct SemanticManifestRunOptions {
@@ -31,6 +32,10 @@ pub struct SemanticManifestRunReport {
     pub fn_total: usize,
     pub fn_with_any_error: usize,
     pub fn_error_rate: f64,
+    pub fn_intent_classified: usize,
+    pub fn_low_confidence: usize,
+    pub fn_intent_coverage: f64,
+    pub fn_low_confidence_rate: f64,
     pub target: PathBuf,
 }
 
@@ -53,6 +58,10 @@ struct ProposalFile {
     fn_total: usize,
     fn_with_any_error: usize,
     fn_error_rate: f64,
+    fn_intent_classified: usize,
+    fn_low_confidence: usize,
+    fn_intent_coverage: f64,
+    fn_low_confidence_rate: f64,
     proposals: HashMap<String, SemanticManifest>,
 }
 
@@ -66,6 +75,8 @@ struct GraphNode {
     signature: Option<String>,
     #[serde(default)]
     intent_class: Option<String>,
+    #[serde(default)]
+    intent_evidence: IntentEvidence,
     #[serde(default)]
     resource: Option<String>,
     #[serde(default)]
@@ -82,6 +93,18 @@ struct GraphNode {
     semantic_manifest: Option<SemanticManifest>,
     #[serde(default)]
     def: Option<SourceSpan>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+struct IntentEvidence {
+    #[serde(default)]
+    from_doc: Option<String>,
+    #[serde(default)]
+    from_name: Option<String>,
+    #[serde(default)]
+    from_effects: Option<String>,
+    #[serde(default)]
+    confidence: f64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Default)]
@@ -323,6 +346,7 @@ fn is_missing_contract_value(value: &str) -> bool {
     trimmed.is_empty()
         || trimmed == "TODO"
         || trimmed == MISSING
+        || trimmed.eq_ignore_ascii_case(UNKNOWN_LOW_CONFIDENCE)
         || trimmed.eq_ignore_ascii_case("unknown")
         || trimmed.eq_ignore_ascii_case("missing")
 }
@@ -620,7 +644,27 @@ fn infer_resource(calls: &[String], effects: &[String], symbol: &str) -> String 
         .unwrap_or_else(|| "memory".to_string())
 }
 
-fn infer_intent(intent: Option<String>, effects: &[String], symbol: &str) -> String {
+fn infer_intent(
+    evidence: &IntentEvidence,
+    intent: Option<String>,
+    effects: &[String],
+    symbol: &str,
+) -> String {
+    if let Some(v) = evidence.from_doc.as_deref() {
+        if !is_missing_contract_value(v) {
+            return v.to_string();
+        }
+    }
+    if let Some(v) = evidence.from_name.as_deref() {
+        if !is_missing_contract_value(v) {
+            return v.to_string();
+        }
+    }
+    if let Some(v) = evidence.from_effects.as_deref() {
+        if !is_missing_contract_value(v) {
+            return v.to_string();
+        }
+    }
     if let Some(v) = intent {
         if !is_missing_contract_value(&v) {
             return v;
@@ -655,10 +699,10 @@ fn infer_intent(intent: Option<String>, effects: &[String], symbol: &str) -> Str
     if effects_contain_any(effects, &["uses_network", "spawns_process"]) {
         return "transport_effect".to_string();
     }
-    if !has_read && !has_write {
-        return "pure_transform".to_string();
+    if has_read && has_write {
+        return "repair_or_initialize".to_string();
     }
-    "repair_or_initialize".to_string()
+    UNKNOWN_LOW_CONFIDENCE.to_string()
 }
 
 fn infer_failure(outputs: &[String], symbol: &str) -> String {
@@ -768,13 +812,30 @@ pub fn run_with_options(
 
     let (effects_by_owner, calls_by_owner) = index_manifest_edges(&graph);
 
-    let (proposals, updated, fn_total, fn_with_any_error) =
+    let (
+        proposals,
+        updated,
+        fn_total,
+        fn_with_any_error,
+        fn_intent_classified,
+        fn_low_confidence,
+    ) =
         build_semantic_manifest_proposals(&graph, &workspace, &effects_by_owner, &calls_by_owner);
 
     let error_rate = if fn_total == 0 {
         0.0
     } else {
         fn_with_any_error as f64 / fn_total as f64
+    };
+    let intent_coverage = if fn_total == 0 {
+        1.0
+    } else {
+        fn_intent_classified as f64 / fn_total as f64
+    };
+    let low_confidence_rate = if fn_total == 0 {
+        0.0
+    } else {
+        fn_low_confidence as f64 / fn_total as f64
     };
 
     finish_semantic_manifest_run(SemanticManifestRunFinish {
@@ -787,6 +848,10 @@ pub fn run_with_options(
         fn_total,
         fn_with_any_error,
         fn_error_rate: error_rate,
+        fn_intent_classified,
+        fn_low_confidence,
+        fn_intent_coverage: intent_coverage,
+        fn_low_confidence_rate: low_confidence_rate,
         proposals,
     })
 }
@@ -801,6 +866,10 @@ struct SemanticManifestRunFinish<'a> {
     fn_total: usize,
     fn_with_any_error: usize,
     fn_error_rate: f64,
+    fn_intent_classified: usize,
+    fn_low_confidence: usize,
+    fn_intent_coverage: f64,
+    fn_low_confidence_rate: f64,
     proposals: HashMap<String, SemanticManifest>,
 }
 
@@ -819,6 +888,10 @@ fn finish_semantic_manifest_run(
         fn_total: finish.fn_total,
         fn_with_any_error: finish.fn_with_any_error,
         fn_error_rate: finish.fn_error_rate,
+        fn_intent_classified: finish.fn_intent_classified,
+        fn_low_confidence: finish.fn_low_confidence,
+        fn_intent_coverage: finish.fn_intent_coverage,
+        fn_low_confidence_rate: finish.fn_low_confidence_rate,
         proposals: finish.proposals,
     };
     write_semantic_manifest_proposals(
@@ -840,6 +913,10 @@ fn finish_semantic_manifest_run(
         fn_total: finish.fn_total,
         fn_with_any_error: finish.fn_with_any_error,
         fn_error_rate: finish.fn_error_rate,
+        fn_intent_classified: finish.fn_intent_classified,
+        fn_low_confidence: finish.fn_low_confidence,
+        fn_intent_coverage: finish.fn_intent_coverage,
+        fn_low_confidence_rate: finish.fn_low_confidence_rate,
         target,
     })
 }
@@ -973,12 +1050,21 @@ fn build_semantic_manifest_proposals(
     workspace: &Path,
     effects_by_owner: &HashMap<String, BTreeSet<String>>,
     calls_by_owner: &HashMap<String, BTreeSet<String>>,
-) -> (HashMap<String, SemanticManifest>, usize, usize, usize) {
+) -> (
+    HashMap<String, SemanticManifest>,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+) {
     let mut src_cache: HashMap<PathBuf, Vec<String>> = HashMap::new();
     let mut proposals: HashMap<String, SemanticManifest> = HashMap::new();
     let mut updated = 0usize;
     let mut fn_total = 0usize;
     let mut fn_with_any_error = 0usize;
+    let mut fn_intent_classified = 0usize;
+    let mut fn_low_confidence = 0usize;
     for (node_id, node) in &graph.nodes {
         let mut manifest = build_node_semantic_manifest_proposal(
             node_id,
@@ -989,22 +1075,39 @@ fn build_semantic_manifest_proposals(
             calls_by_owner,
         );
         let has_error = manifest_has_error(&manifest);
+        let has_low_confidence = manifest_has_low_confidence(&manifest);
         manifest.manifest_status = if has_error {
             "partial_error".to_string()
+        } else if has_low_confidence {
+            "low_confidence".to_string()
         } else {
             "complete".to_string()
         };
+        let intent_is_classified = intent_is_classified(&manifest.intent_class);
         proposals.insert(node_id.clone(), manifest);
         if node.kind == "fn" {
             fn_total += 1;
             if has_error {
                 fn_with_any_error += 1;
             }
+            if intent_is_classified {
+                fn_intent_classified += 1;
+            }
+            if has_low_confidence {
+                fn_low_confidence += 1;
+            }
         }
         updated += 1;
     }
 
-    (proposals, updated, fn_total, fn_with_any_error)
+    (
+        proposals,
+        updated,
+        fn_total,
+        fn_with_any_error,
+        fn_intent_classified,
+        fn_low_confidence,
+    )
 }
 
 fn build_node_semantic_manifest_proposal(
@@ -1049,6 +1152,7 @@ fn build_node_semantic_manifest_proposal(
             .collect::<Vec<_>>(),
     );
     let intent = infer_intent(
+        &node.intent_evidence,
         Some(choose_scalar(&[
             doc.intent.clone(),
             node.intent_class.clone(),
@@ -1133,6 +1237,21 @@ fn manifest_has_error(manifest: &SemanticManifest) -> bool {
         || contains_missing(&manifest.forbidden_effects)
         || contains_missing(&manifest.invariants)
         || contains_missing(&manifest.provenance)
+}
+
+fn manifest_has_low_confidence(manifest: &SemanticManifest) -> bool {
+    intent_is_low_confidence(&manifest.intent_class)
+}
+
+fn intent_is_classified(intent: &str) -> bool {
+    !is_missing_contract_value(intent) && !intent_is_low_confidence(intent)
+}
+
+fn intent_is_low_confidence(intent: &str) -> bool {
+    let intent = intent.trim();
+    intent.is_empty()
+        || intent.eq_ignore_ascii_case("unknown")
+        || intent.eq_ignore_ascii_case(UNKNOWN_LOW_CONFIDENCE)
 }
 
 fn manifest_scalar_has_error(manifest: &SemanticManifest) -> bool {

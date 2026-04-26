@@ -547,6 +547,14 @@ pub enum EffectEvent {
         semantic_fn_error_rate: f64,
         semantic_fn_total: usize,
         semantic_fn_with_any_error: usize,
+        #[serde(default)]
+        semantic_fn_intent_classified: usize,
+        #[serde(default)]
+        semantic_fn_low_confidence: usize,
+        #[serde(default)]
+        semantic_fn_intent_coverage: f64,
+        #[serde(default)]
+        semantic_fn_low_confidence_rate: f64,
     },
     /// Last completed action snapshot used to resume after process restarts.
     PostRestartResultRecorded {

@@ -114,6 +114,10 @@ pub fn run(
         semantic_fn_error_rate: snapshot.semantic_fn_error_rate,
         semantic_fn_total: snapshot.semantic_fn_total,
         semantic_fn_with_any_error: snapshot.semantic_fn_with_any_error,
+        semantic_fn_intent_classified: snapshot.semantic_fn_intent_classified,
+        semantic_fn_low_confidence: snapshot.semantic_fn_low_confidence,
+        semantic_fn_intent_coverage: snapshot.semantic_fn_intent_coverage,
+        semantic_fn_low_confidence_rate: snapshot.semantic_fn_low_confidence_rate,
     };
 
     if let Some(w) = writer {

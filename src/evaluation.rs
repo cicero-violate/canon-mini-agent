@@ -23,6 +23,10 @@ pub struct EvalInput {
     pub semantic_fn_total: usize,
     pub semantic_fn_with_any_error: usize,
     pub semantic_fn_error_rate: f64,
+    pub semantic_fn_intent_classified: usize,
+    pub semantic_fn_low_confidence: usize,
+    pub semantic_fn_intent_coverage: f64,
+    pub semantic_fn_low_confidence_rate: f64,
     pub structural_invariant_coverage: StructuralInvariantCoverage,
     pub tlog_delta_signals: TlogDeltaSignals,
 }
@@ -94,6 +98,10 @@ pub struct EvaluationWorkspaceSnapshot {
     pub semantic_fn_total: usize,
     pub semantic_fn_with_any_error: usize,
     pub semantic_fn_error_rate: f64,
+    pub semantic_fn_intent_classified: usize,
+    pub semantic_fn_low_confidence: usize,
+    pub semantic_fn_intent_coverage: f64,
+    pub semantic_fn_low_confidence_rate: f64,
     pub structural_invariant_coverage: StructuralInvariantCoverage,
     pub tlog_delta_signals: TlogDeltaSignals,
     pub vector: EvaluationVector,
@@ -109,6 +117,17 @@ impl EvaluationWorkspaceSnapshot {
 
 /// Pure kernel entry point — no I/O.  All inputs are pre-loaded by the caller.
 pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
+    let intent_coverage = if input.semantic_fn_total == 0 {
+        1.0
+    } else {
+        input.semantic_fn_intent_coverage.clamp(0.0, 1.0)
+    };
+    let semantic_contract_score = (
+        (1.0 - input.semantic_fn_error_rate).clamp(0.0, 1.0)
+            * intent_coverage
+            * (1.0 - input.semantic_fn_low_confidence_rate).clamp(0.0, 1.0)
+    )
+        .clamp(0.0, 1.0);
     let mut vector = evaluate_repo_state(
         input.objectives_completed,
         input.objectives_total,
@@ -117,7 +136,7 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         input.total_tasks,
         input.open_issues,
         input.repeated_open_issues,
-        (1.0 - input.semantic_fn_error_rate).clamp(0.0, 1.0),
+        semantic_contract_score,
         input.structural_invariant_coverage.score,
         input.tlog_delta_signals.score,
         input.tlog_delta_signals.improvement_measurement_score,
@@ -141,6 +160,10 @@ pub fn compute_eval(input: &EvalInput) -> EvaluationWorkspaceSnapshot {
         semantic_fn_total: input.semantic_fn_total,
         semantic_fn_with_any_error: input.semantic_fn_with_any_error,
         semantic_fn_error_rate: input.semantic_fn_error_rate,
+        semantic_fn_intent_classified: input.semantic_fn_intent_classified,
+        semantic_fn_low_confidence: input.semantic_fn_low_confidence,
+        semantic_fn_intent_coverage: input.semantic_fn_intent_coverage,
+        semantic_fn_low_confidence_rate: input.semantic_fn_low_confidence_rate,
         structural_invariant_coverage: input.structural_invariant_coverage.clone(),
         tlog_delta_signals: input.tlog_delta_signals.clone(),
         vector,
@@ -291,6 +314,10 @@ pub fn evaluate_workspace(workspace: &Path) -> EvaluationWorkspaceSnapshot {
         semantic_fn_total: semantic_metrics.fn_total,
         semantic_fn_with_any_error: semantic_metrics.fn_with_any_error,
         semantic_fn_error_rate: semantic_metrics.fn_error_rate,
+        semantic_fn_intent_classified: semantic_metrics.fn_intent_classified,
+        semantic_fn_low_confidence: semantic_metrics.fn_low_confidence,
+        semantic_fn_intent_coverage: semantic_metrics.fn_intent_coverage,
+        semantic_fn_low_confidence_rate: semantic_metrics.fn_low_confidence_rate,
         structural_invariant_coverage,
         tlog_delta_signals,
     })
@@ -1631,6 +1658,10 @@ mod tests {
                 semantic_fn_error_rate: 0.0,
                 semantic_fn_total: 0,
                 semantic_fn_with_any_error: 0,
+                semantic_fn_intent_classified: 0,
+                semantic_fn_low_confidence: 0,
+                semantic_fn_intent_coverage: 1.0,
+                semantic_fn_low_confidence_rate: 0.0,
             }),
         });
 
@@ -1757,6 +1788,10 @@ mod tests {
                     semantic_fn_error_rate: 0.0,
                     semantic_fn_total: 0,
                     semantic_fn_with_any_error: 0,
+                    semantic_fn_intent_classified: 0,
+                    semantic_fn_low_confidence: 0,
+                    semantic_fn_intent_coverage: 1.0,
+                    semantic_fn_low_confidence_rate: 0.0,
                 }),
             },
         ];

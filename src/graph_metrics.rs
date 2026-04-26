@@ -656,13 +656,13 @@ fn collect_states_by_symbol(idx: &SemanticIndex) -> HashMap<String, HashSet<Stri
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: implicit_state_machine_issues
 /// Inputs: &mut issues::IssuesFile, &str, &semantic::SemanticIndex, &std::collections::HashMap<std::string::String, std::collections::HashSet<std::string::String>>
 /// Outputs: (std::collections::HashSet<std::string::String>, usize)
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: upserts implicit state machine issues into issues file
+/// Forbidden: filesystem writes, process spawning, network access
+/// Invariants: desired ids include every state-bearing function issue id; mutation count tracks qualifying upserts
+/// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 fn upsert_implicit_state_machine_issues(
     file: &mut IssuesFile,

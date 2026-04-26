@@ -245,6 +245,10 @@ fn score_intent_class(intent_class: Option<&str>, reasoning: &mut Vec<String>) -
         reasoning.push("intent_class:unknown".into());
         return 0.0;
     };
+    if matches!(ic.trim(), "" | "error" | "unknown" | "unknown_low_confidence") {
+        reasoning.push("intent_class:unknown".into());
+        return 0.0;
+    }
     reasoning.push(format!("intent:{ic}"));
     0.10 + match ic {
         "pure_transform" => score_reason(reasoning, 0.25, "pure_transform:+0.25"),

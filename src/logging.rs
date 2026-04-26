@@ -579,13 +579,13 @@ pub(crate) fn log_action_event(
 }
 
 /// Intent: event_append
-/// Resource: error
+/// Resource: action_result_log
 /// Inputs: std::option::Option<&mut canonical_writer::CanonicalWriter>, &str, &llm_runtime::config::LlmEndpoint, &str, usize, &str, &serde_json::Value, bool, &str
 /// Outputs: std::result::Result<(), anyhow::Error>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: appends action result log record and records canonical effect when writer is present
+/// Forbidden: network access, process spawning
+/// Invariants: log record and effect include role, step, command id, action kind, success flag, result bytes, and result hash
+/// Failure: returns action log append errors
 /// Provenance: rustc:facts + rustc:docstring
 pub(crate) fn append_action_result_log(
     mut writer: Option<&mut CanonicalWriter>,

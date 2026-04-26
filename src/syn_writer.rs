@@ -349,7 +349,7 @@ fn build_doc(
     let intent = normalize_scalar(
         manifest
             .and_then(|m| {
-                if m.intent_class == "error" {
+                if scalar_is_unclassified_intent(&m.intent_class) {
                     None
                 } else {
                     Some(m.intent_class.as_str())
@@ -548,15 +548,22 @@ fn node_has_contract_intent(
     node.intent_class
         .as_deref()
         .map(str::trim)
-        .filter(|v| !v.is_empty() && *v != "error")
+        .filter(|v| !scalar_is_unclassified_intent(v))
         .is_some()
         || node
             .semantic_manifest
             .as_ref()
             .or(proposal_manifest)
             .map(|m| m.intent_class.trim())
-            .filter(|v| !v.is_empty() && *v != "error")
+            .filter(|v| !scalar_is_unclassified_intent(v))
             .is_some()
+}
+
+fn scalar_is_unclassified_intent(value: &str) -> bool {
+    matches!(
+        value.trim(),
+        "" | "error" | "unknown" | "unknown_low_confidence"
+    )
 }
 
 fn path_under_workspace_src(file: &str, workspace_root: &Path, workspace_src: &Path) -> bool {

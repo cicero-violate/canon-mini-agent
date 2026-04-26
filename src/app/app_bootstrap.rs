@@ -575,13 +575,13 @@ pub(super) fn cycle_control_hash(snapshot: &ControlConvergenceSnapshot<'_>) -> u
 }
 
 /// Intent: diagnostic_scan
-/// Resource: error
+/// Resource: livelock_report
 /// Inputs: &std::path::Path, u32, &[&str], bool, bool
 /// Outputs: ()
 /// Effects: fs_write, state_write
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Forbidden: network access, process spawning
+/// Invariants: report records stall cycles, control surfaces, planner pending flag, and diagnostics pending flag
+/// Failure: serialization and report write errors are best-effort suppressed
 /// Provenance: rustc:facts + rustc:docstring
 pub(super) fn write_livelock_report(
     agent_state_dir: &Path,

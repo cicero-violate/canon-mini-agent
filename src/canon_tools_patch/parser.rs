@@ -190,13 +190,13 @@ fn check_patch_boundaries_lenient<'a>(
 }
 
 /// Intent: pure_transform
-/// Resource: error
+/// Resource: patch_hunk
 /// Inputs: &[&str], usize
 /// Outputs: std::result::Result<(canon_tools_patch::parser::Hunk, usize), canon_tools_patch::parser::ParseError>
-/// Effects: error
-/// Forbidden: error
-/// Invariants: error
-/// Failure: error
+/// Effects: parses one add, delete, or update hunk without mutation
+/// Forbidden: filesystem writes, state mutation, process spawning, network access
+/// Invariants: consumed line count advances with parsed hunk content; add hunks require at least one + line; update hunks preserve optional move target and parsed chunks
+/// Failure: returns parse errors for missing hunk, missing filename, invalid add content, invalid update chunks, or unknown hunk marker
 /// Provenance: rustc:facts + rustc:docstring
 fn parse_one_hunk(
     lines: &[&str],
