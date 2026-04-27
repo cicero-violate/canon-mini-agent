@@ -565,13 +565,15 @@ pub(super) async fn run_agent(
                     signature: resume.signature.clone(),
                 });
                 last_result = Some(out);
-                if kind.as_str() == "apply_patch"
-                    && last_result
-                        .as_deref()
-                        .unwrap_or_default()
-                        .starts_with("apply_patch ok")
-                {
-                    return Ok(AgentCompletion::Summary(last_result.unwrap_or_default()));
+                if kind.as_str() == "run_command" {
+                    let cmd = action.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
+                    if run_command_is_cargo_check(cmd)
+                        && !exec_result_has_cargo_check_failure(
+                            last_result.as_deref().unwrap_or_default(),
+                        )
+                    {
+                        return Ok(AgentCompletion::Summary(last_result.unwrap_or_default()));
+                    }
                 }
             }
         }
@@ -852,6 +854,13 @@ pub(super) fn peek_post_restart_result_from_tlog(
         });
     }
     None
+}
+
+pub(super) fn run_command_is_cargo_check(cmd: &str) -> bool {
+    cmd.split_whitespace()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .any(|w| w[0] == "cargo" && w[1] == "check")
 }
 
 pub(super) fn post_restart_role_key(role: &str) -> &str {

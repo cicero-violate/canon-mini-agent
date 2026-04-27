@@ -722,6 +722,7 @@ fn plan_text_has_repair_plan_binding(text: &str) -> bool {
             tasks.iter().any(|task| {
                 task.get("repair_plan_id").and_then(|v| v.as_str()).is_some()
                     && task.get("required_mutation").and_then(|v| v.as_str()).is_some()
+                    && task.get("target_files").and_then(|v| v.as_array()).is_some()
             })
         })
         .unwrap_or(false)

@@ -258,7 +258,10 @@ pub(super) fn recover_verifier_item_from_executor_post_restart(
     lanes: &[LaneConfig],
 ) -> Option<ResumeVerifierItem> {
     let resume = peek_post_restart_result("executor")?;
-    if resume.action != "apply_patch" || !resume.result.contains("apply_patch ok") {
+    let is_cargo_check_ok = resume.action == "run_command"
+        && resume.result.contains("projection_refresh:")
+        && !exec_result_has_cargo_check_failure(&resume.result);
+    if !is_cargo_check_ok {
         return None;
     }
     let lane = lanes
