@@ -94,7 +94,6 @@ pub(super) async fn run_planner_phase(
             &inputs.lessons_text,
             &inputs.enforced_invariants_text,
             &inputs.semantic_control_text,
-            &inputs.plan_diff_text,
             &inputs.executor_diff_text,
             &inputs.cargo_test_failures,
         )

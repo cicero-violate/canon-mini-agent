@@ -42,7 +42,6 @@ pub struct PlannerInputs {
     pub enforced_invariants_text: String,
     pub semantic_control_text: String,
     pub plan_text: String,
-    pub plan_diff_text: String,
 }
 
 pub struct ExecutorDiffInputs {
@@ -2258,10 +2257,8 @@ fn planner_objectives_text(workspace: &Path) -> String {
     }
 }
 
-fn planner_plan_texts(master_plan_path: &Path, last_plan_text: &str) -> (String, String) {
-    let plan_text = read_text_or_empty(master_plan_path);
-    let plan_diff_text = plan_diff(last_plan_text, &plan_text, 400);
-    (plan_text, plan_diff_text)
+fn planner_plan_text(master_plan_path: &Path) -> String {
+    read_text_or_empty(master_plan_path)
 }
 
 fn planner_enforced_invariants_text(workspace: &Path) -> String {
@@ -2282,7 +2279,7 @@ pub fn load_planner_inputs(
     lanes: &[LaneConfig],
     workspace: &Path,
     verifier_summary: &[String],
-    last_plan_text: &str,
+    _last_plan_text: &str,
     last_executor_diff: &mut String,
     cargo_test_failures: String,
     master_plan_path: &Path,
@@ -2299,7 +2296,7 @@ pub fn load_planner_inputs(
         10,
         semantic_control_snapshot_hash_path,
     );
-    let (plan_text, plan_diff_text) = planner_plan_texts(master_plan_path, last_plan_text);
+    let plan_text = planner_plan_text(master_plan_path);
     PlannerInputs {
         summary_text,
         executor_diff_text,
@@ -2309,7 +2306,6 @@ pub fn load_planner_inputs(
         enforced_invariants_text,
         semantic_control_text: semantic_control.control_summary,
         plan_text,
-        plan_diff_text,
     }
 }
 
@@ -2473,69 +2469,6 @@ fn executor_diff_unavailable(reason: &str) -> String {
     format!("(executor diff unavailable: {reason})")
 }
 
-fn plan_diff(old_text: &str, new_text: &str, max_lines: usize) -> String {
-    if old_text.is_empty() {
-        let mut out = format!("+++ {} (initial)\n", MASTER_PLAN_FILE);
-        for (idx, line) in new_text.lines().enumerate() {
-            if idx >= max_lines {
-                out.push_str("... (truncated)\n");
-                break;
-            }
-            out.push_str("+ ");
-            out.push_str(line);
-            out.push('\n');
-        }
-        return out;
-    }
-    if old_text == new_text {
-        return "(no changes)".to_string();
-    }
-    let mut out = String::new();
-    let old_lines: Vec<&str> = old_text.lines().collect();
-    let new_lines: Vec<&str> = new_text.lines().collect();
-    let mut i = 0usize;
-    let mut j = 0usize;
-    let mut emitted = 0usize;
-    while i < old_lines.len() || j < new_lines.len() {
-        if emitted >= max_lines {
-            out.push_str("... (truncated)\n");
-            break;
-        }
-        match (old_lines.get(i), new_lines.get(j)) {
-            (Some(ol), Some(nl)) if ol == nl => {
-                i += 1;
-                j += 1;
-            }
-            (Some(ol), Some(nl)) => {
-                out.push_str("- ");
-                out.push_str(ol);
-                out.push('\n');
-                out.push_str("+ ");
-                out.push_str(nl);
-                out.push('\n');
-                i += 1;
-                j += 1;
-                emitted += 2;
-            }
-            (Some(ol), None) => {
-                out.push_str("- ");
-                out.push_str(ol);
-                out.push('\n');
-                i += 1;
-                emitted += 1;
-            }
-            (None, Some(nl)) => {
-                out.push_str("+ ");
-                out.push_str(nl);
-                out.push('\n');
-                j += 1;
-                emitted += 1;
-            }
-            (None, None) => break,
-        }
-    }
-    out
-}
 
 fn diff_since_last_cycle(current: &str, last: &str) -> String {
     if current.trim().is_empty() {

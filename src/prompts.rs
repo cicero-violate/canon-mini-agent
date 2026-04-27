@@ -774,7 +774,6 @@ pub(crate) fn planner_cycle_prompt(
     lessons_text: &str,
     enforced_invariants_text: &str,
     semantic_control_text: &str,
-    plan_diff: &str,
     executor_diff: &str,
     cargo_test_failures: &str,
 ) -> String {
@@ -785,8 +784,7 @@ pub(crate) fn planner_cycle_prompt(
     let repair_plan_contract = active_repair_plan_contract();
     let prefix = format!(
         "WORKSPACE: {workspace}\nAll relative paths resolve against WORKSPACE.\n\n\
-         PLAN.json EDIT RULE: always use the `plan` action — NEVER apply_patch on {MASTER_PLAN_FILE}.\n\n\
-         Current plan state (from {MASTER_PLAN_FILE}) — read-only context, edit via `plan` action:\n{plan_diff}"
+         PLAN.json EDIT RULE: always use the `plan` action — NEVER apply_patch on {MASTER_PLAN_FILE}.\n\n"
     );
     let objectives_heading = format!("Objectives (from {OBJECTIVES_FILE})");
     let lessons_heading = "Lessons artifact:".to_string();
@@ -2323,7 +2321,7 @@ mod tests {
     #[test]
     fn planner_prompts_require_full_artifact_review_and_role_contract() {
         let system = system_instructions(AgentPromptKind::Planner);
-        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
+        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "");
         let single = single_role_planner_prompt(
             "{spec}",
             "{objectives}",
@@ -2359,7 +2357,7 @@ mod tests {
     #[test]
     fn planner_prompts_are_eval_driven_before_issue_score_driven() {
         let system = system_instructions(AgentPromptKind::Planner);
-        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
+        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "");
         let single = single_role_planner_prompt(
             "{spec}",
             "{objectives}",
@@ -2386,7 +2384,7 @@ mod tests {
     #[test]
     fn planner_prompts_include_active_repair_plan_contract() {
         let system = system_instructions(AgentPromptKind::Planner);
-        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
+        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "");
         let single = single_role_planner_prompt(
             "{spec}",
             "{objectives}",
@@ -2411,7 +2409,7 @@ mod tests {
     #[test]
     fn planner_prompts_include_artifact_lineage_contract() {
         let system = system_instructions(AgentPromptKind::Planner);
-        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
+        let cycle = planner_cycle_prompt("", "{}", "", "", "", "", "");
         let single = single_role_planner_prompt(
             "{spec}",
             "{objectives}",
@@ -2447,7 +2445,7 @@ mod tests {
 
     #[test]
     fn cycle_prompts_include_canonical_pipeline_contract() {
-        let planner = planner_cycle_prompt("", "{}", "", "", "", "", "", "");
+        let planner = planner_cycle_prompt("", "{}", "", "", "", "", "");
         let executor = executor_cycle_prompt("executor", "executor_pool", "", "[]", "");
         assert!(planner.contains("CANONICAL_PIPELINE.md"));
         assert!(executor.contains("CANONICAL_PIPELINE.md"));
