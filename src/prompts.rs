@@ -551,25 +551,24 @@ fn prompt_intro(kind: AgentPromptKind) -> &'static str {
     }
 }
 
-const CANONICAL_PIPELINE_CONTRACT: &str = "\
-S = project(T)\n\
-E = score(S, I, graph, issues, objectives, deltas)\n\
-P = plan(E)\n\
-X = execute(P)\n\
-V = verify(X)\n\
-L_artifact = artifact_id → source_event_seq → producer_action → target_file → repair_plan_id? → plan_task_id? → eval_outcome\n\
-G_eval = regenerate(agent_state/reports/complexity/latest.json) with `canon-generate-issues --complexity-report-only` after apply_patch_ok ∧ cargo_check_ok\n\
-G_issue = regenerate(graph, issues) after semantic sync; do not wait on it to prove eval latest.json freshness\n\
-T' = append(T, effects(X, V, G_eval, G_issue))\n\
-L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior\n\
-C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)\n\
-reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)\n\
-Order: observe truth → eval → plan ready work → execute bounded patch → verify gates → regenerate projections → append tlog effects → learn → gated commit.";
-
 fn canonical_pipeline_prompt_block() -> String {
+    let workspace = crate::constants::workspace();
     format!(
-        "Canonical pipeline contract (from {PIPELINE_FILE}; load that file for full details):\n{}",
-        CANONICAL_PIPELINE_CONTRACT
+        "Canonical pipeline contract (from {PIPELINE_FILE}; load that file for full details):\n\
+         S = project(T)\n\
+         E = score(S, I, graph, issues, objectives, deltas)\n\
+         P = plan(E)\n\
+         X = execute(P)\n\
+         V = verify(X)\n\
+         L_artifact = artifact_id → source_event_seq → producer_action → target_file → repair_plan_id? → plan_task_id? → eval_outcome\n\
+         G_eval = regenerate(agent_state/reports/complexity/latest.json) with `cargo run -p canon-mini-agent --bin canon-generate-issues -- --workspace {workspace} --complexity-report-only` after apply_patch_ok ∧ cargo_check_ok\n\
+         G_issue = regenerate(graph, issues) after semantic sync; do not wait on it to prove eval latest.json freshness\n\
+         NOTE: canon-rustc-v2 is a RUSTC_WRAPPER set in .cargo/config.toml — it runs automatically on every cargo build/check/test and is NOT a bin target; never invoke it directly\n\
+         T' = append(T, effects(X, V, G_eval, G_issue))\n\
+         L = learn(failure_event) only when it changes invariant/eval/test/prompt behavior\n\
+         C_allowed = no_rust_change ∨ (cargo_check_ok ∧ cargo_test_ok ∧ cargo_build_ok)\n\
+         reload_proven = SupervisorRestartRequested ∧ SupervisorChildStarted(binary_path, mtime)\n\
+         Order: observe truth → eval → plan ready work → execute bounded patch → verify gates → regenerate projections → append tlog effects → learn → gated commit."
     )
 }
 

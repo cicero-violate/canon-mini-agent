@@ -564,6 +564,18 @@ fn resolve_doc_lines(
     if idx > lines.len() {
         idx = lines.len();
     }
+    if idx < lines.len() && lines[idx].trim_start().starts_with("///") {
+        let mut out = Vec::new();
+        while idx < lines.len() {
+            let line = lines[idx].trim_start();
+            if !line.starts_with("///") {
+                break;
+            }
+            out.push(line.to_string());
+            idx += 1;
+        }
+        return out;
+    }
     let mut out = Vec::new();
     while idx > 0 {
         let prev = lines[idx - 1].trim_start();
@@ -954,14 +966,37 @@ fn write_semantic_manifest_proposals(
     if target == graph_path {
         let mut raw_graph: serde_json::Value = serde_json::from_slice(graph_bytes)?;
         for (node_id, manifest) in &proposal_file.proposals {
-            if let Some(node) = raw_graph
-                .get_mut("nodes")
-                .and_then(|nodes| nodes.get_mut(node_id))
-                .and_then(|node| node.as_object_mut())
-            {
+            let node = if let Some(nodes) = raw_graph.get_mut("nodes") {
+                if nodes.get(node_id).is_some() {
+                    nodes.get_mut(node_id)
+                } else {
+                    nodes.as_object_mut().and_then(|map| {
+                        map.values_mut().find(|node| {
+                            node.get("path").and_then(|p| p.as_str())
+                                == Some(manifest.symbol.as_str())
+                        })
+                    })
+                }
+            } else {
+                None
+            }
+            .and_then(|node| node.as_object_mut());
+            if let Some(node) = node {
                 node.insert(
                     "semantic_manifest".to_string(),
                     serde_json::to_value(manifest)?,
+                );
+                node.insert(
+                    "intent_class".to_string(),
+                    serde_json::Value::String(manifest.intent_class.clone()),
+                );
+                node.insert(
+                    "resource".to_string(),
+                    serde_json::Value::String(manifest.resource.clone()),
+                );
+                node.insert(
+                    "provenance".to_string(),
+                    serde_json::to_value(&manifest.provenance)?,
                 );
             }
         }

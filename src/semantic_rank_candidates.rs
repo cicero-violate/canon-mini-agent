@@ -117,6 +117,12 @@ struct Summary {
     unmatched_owners: usize,
 }
 
+/// Intent: pure_transform
+/// Resource: safe_patch_candidate_report
+/// Inputs: ranked semantic owner data, redundant path summaries, scoring factors
+/// Outputs: serializable candidate row for safe_patch_candidates.json
+/// Effects: none
+/// Invariants: confidence remains in [0.0, 1.0]; rank is 1-based; reasoning explains score
 #[derive(Debug, Serialize)]
 struct Candidate {
     /// 1-based rank (1 = highest confidence).

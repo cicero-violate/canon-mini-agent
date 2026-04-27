@@ -294,6 +294,12 @@ fn op_encode(
     ))
 }
 
+/// Intent: canonical_read
+/// Resource: lessons.json
+/// Inputs: workspace path
+/// Outputs: success flag and human-readable lessons artifact contents
+/// Effects: reads filesystem
+/// Invariants: does not mutate lessons state; missing artifact returns explanatory text
 fn op_read_lessons(workspace: &Path) -> Result<(bool, String)> {
     let artifact = load_lessons_artifact(workspace);
     if artifact == LessonsArtifact::default() {

@@ -447,6 +447,12 @@ fn load_cargo_test_failure_scan(out: &str) -> (Option<PathBuf>, String) {
     (log_path, scan)
 }
 
+/// Intent: diagnostic_scan
+/// Resource: cargo_test_output
+/// Inputs: cargo test output text
+/// Outputs: bounded failure-focused output window
+/// Effects: none
+/// Invariants: preserves UTF-8 char boundaries; prefers failure tail markers
 fn cargo_test_failure_scan_window(content: &str) -> String {
     let limit = MAX_SNIPPET * 8;
     if content.len() <= limit {

@@ -945,7 +945,7 @@ fn build_tool_actions_list() -> Vec<(&'static str, &'static str, Option<&'static
             "run_command",
             "run shell commands for discovery or verification",
             Some(
-                "Examples:\n  {\"action\":\"run_command\",\"cmd\":\"cargo check -p canon-mini-agent\",\"cwd\":\"/workspace/ai_sandbox/canon-mini-agent\",\"rationale\":\"Validate the target crate after a change.\"}\n  {\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"/workspace/ai_sandbox/canon-mini-agent\",\"rationale\":\"Search the codebase for the relevant symbol before editing.\"}\n⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.",
+                "Examples:\n  {\"action\":\"run_command\",\"cmd\":\"cargo check -p canon-mini-agent\",\"cwd\":\"/workspace/ai_sandbox/canon-mini-agent\",\"rationale\":\"Validate the target crate after a change.\"}\n  {\"action\":\"run_command\",\"cmd\":\"rg -n 'fn foo' src\",\"cwd\":\"/workspace/ai_sandbox/canon-mini-agent\",\"rationale\":\"Search the codebase for the relevant symbol before editing.\"}\n⚠ cwd may be relative to WORKSPACE or absolute under WORKSPACE.\n⚠ NEVER use blocking poll loops such as `while ps -p PID; do sleep 1; done` — all run_command calls must terminate promptly on their own.",
             ),
         ),
         (

@@ -1,0 +1,42 @@
+digraph CanonicalPipeline {
+  rankdir=LR;
+
+  Delta     [label="Delta"];
+  Invariant [label="Invariant"];
+  Judgment  [label="Judgment"];
+  Plan      [label="Plan"];
+  Execute   [label="Execute"];
+  Verify    [label="Verify"];
+  Write     [label="Write"];
+  Eval      [label="Eval"];
+  Recovery  [label="Recovery"];
+  Learn     [label="Learn"];
+
+  // Core loop
+  Delta -> Invariant;
+  Invariant -> Judgment;
+  Judgment -> Plan;
+  Plan -> Execute;
+  Execute -> Verify;
+  Verify -> Write;
+  Write -> Eval;
+  Eval -> Recovery;
+  Recovery -> Learn;
+  Learn -> Judgment;
+
+  // State projection loop
+  Write -> Delta [label="tlog"];
+
+  // Pipeline mutation (meta-loop)
+  Add    [shape=box, label="Add"];
+  Update [shape=box, label="Update"];
+  Delete [shape=box, label="Delete"];
+
+  Judgment -> Add;
+  Judgment -> Update;
+  Judgment -> Delete;
+
+  Add -> Write;
+  Update -> Write;
+  Delete -> Write;
+}

@@ -68,10 +68,12 @@ impl TlogAppendLock {
         modified.elapsed().unwrap_or_default() >= Self::OWNERLESS_LOCK_RECLAIM_AGE
     }
 
-    /// Intent: event_append lock recovery.
-    /// Inputs: tlog append lock path containing an optional owner pid.
-    /// Outputs: true only when a stale/dead-owner lock file was reclaimed.
-    /// Effects: may remove the lock file to unblock canonical tlog appends.
+    /// Intent: event_append
+    /// Resource: tlog_append_lock
+    /// Inputs: tlog append lock path containing an optional owner pid
+    /// Outputs: true only when a stale or dead-owner lock file was reclaimed
+    /// Effects: may remove stale lock file
+    /// Invariants: never reclaims a lock owned by the current process
     fn try_reclaim_stale_lock(lock_path: &Path) -> bool {
         if let Some(owner_pid) = Self::lock_owner_pid(lock_path) {
             if owner_pid == std::process::id() {

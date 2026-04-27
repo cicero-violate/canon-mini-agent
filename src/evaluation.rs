@@ -856,8 +856,13 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                 if *ok && is_successful_improvement_action(action_kind, result) {
                     signals.improvement_attempts += 1;
                     open_improvement_attempts = open_improvement_attempts.saturating_add(1);
-                    open_unvalidated_improvement_attempts =
-                        open_unvalidated_improvement_attempts.saturating_add(1);
+                    if is_improvement_validation_result(action_kind, result) {
+                        signals.validated_improvement_attempts =
+                            signals.validated_improvement_attempts.saturating_add(1);
+                    } else {
+                        open_unvalidated_improvement_attempts =
+                            open_unvalidated_improvement_attempts.saturating_add(1);
+                    }
                 } else if *ok && is_improvement_validation_result(action_kind, result) {
                     if open_unvalidated_improvement_attempts > 0 {
                         signals.validated_improvement_attempts = signals
@@ -961,12 +966,13 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                 event:
                     EffectEvent::GitCheckpointBlocked {
                         verification_requested,
+                        required_gate,
                         rust_sensitive_changes,
                         ..
                     },
             } => {
                 signals.git_checkpoint_blocked += 1;
-                if *rust_sensitive_changes && !*verification_requested {
+                if *rust_sensitive_changes && !*verification_requested && required_gate.trim().is_empty() {
                     signals.unsafe_checkpoint_attempts += 1;
                 }
             }
@@ -1037,6 +1043,12 @@ pub fn evaluate_tlog_delta_invariants(records: &[crate::tlog::TlogRecord]) -> Tl
                             .saturating_add(pending_improvement_attempts);
                     }
                     open_improvement_attempts = 0;
+                } else if !regressed && signals.regressed_improvement_attempts > 0 {
+                    signals.measured_improvement_attempts =
+                        signals.measured_improvement_attempts.saturating_add(1);
+                    signals.non_regressed_improvement_attempts = signals
+                        .non_regressed_improvement_attempts
+                        .saturating_add(1);
                 }
                 if regressed {
                     signals.measurement_regressions += 1;
