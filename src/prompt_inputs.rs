@@ -738,24 +738,8 @@ fn build_plan_verify_summary(workspace: &Path) -> String {
     let objectives = crate::evaluation::load_objectives_file(workspace);
 
     for (plan_id, passed, failures) in &outcomes {
-        if *passed {
-            // Objective plans are surfaced separately below.
-            if plan_id.starts_with("objective:") {
-                let obj_id = plan_id.trim_start_matches("objective:");
-                lines.push(format!(
-                    "→ OBJECTIVE VERIFIED: {obj_id} — all repair plans passed, mark done"
-                ));
-            } else {
-                lines.push(format!(
-                    "→ PLAN VERIFIED: {plan_id} — close the corresponding task in PLAN.json"
-                ));
-            }
-        } else if *failures >= 3 {
-            lines.push(format!(
-                "⚠ PLAN ESCALATED: {plan_id} failed verify {failures}× — \
-                VerificationFailed blocker recorded; add invariant for \
-                'verification_failed' error class"
-            ));
+        if let Some(line) = format_plan_verify_outcome_line(plan_id, *passed, *failures) {
+            lines.push(line);
         }
     }
 
@@ -783,6 +767,27 @@ fn build_plan_verify_summary(workspace: &Path) -> String {
         return String::new();
     }
     format!("Plan verify outcomes:\n{}", lines.join("\n"))
+}
+
+fn format_plan_verify_outcome_line(plan_id: &str, passed: bool, failures: usize) -> Option<String> {
+    if passed {
+        if let Some(obj_id) = plan_id.strip_prefix("objective:") {
+            return Some(format!(
+                "→ OBJECTIVE VERIFIED: {obj_id} — all repair plans passed, mark done"
+            ));
+        }
+        return Some(format!(
+            "→ PLAN VERIFIED: {plan_id} — close the corresponding task in PLAN.json"
+        ));
+    }
+
+    (failures >= 3).then(|| {
+        format!(
+            "⚠ PLAN ESCALATED: {plan_id} failed verify {failures}× — \
+            VerificationFailed blocker recorded; add invariant for \
+            'verification_failed' error class"
+        )
+    })
 }
 
 fn format_objective_repair_plan_verify_summary(
