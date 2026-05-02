@@ -103,9 +103,25 @@ def parse_args():
         action="store_true",
         help="Upload even if filename already appears in the page",
     )
+    p.add_argument(
+        "--message",
+        help="Message to send in the ChatGPT project composer after the source is ready",
+    )
+    p.add_argument(
+        "--message-file",
+        help="Path to a UTF-8 text file containing the message to send after the source is ready",
+    )
+    p.add_argument(
+        "--message-timeout-sec",
+        type=float,
+        default=20.0,
+        help="Timeout for finding/enabling the chat composer when --message is used",
+    )
     args = p.parse_args()
     if not args.build_tar and not args.file:
         p.error("either --file or --build-tar is required")
+    if args.message and args.message_file:
+        p.error("use either --message or --message-file, not both")
     return args
 
 
@@ -142,6 +158,23 @@ def resolve_upload_file(args):
         raise RuntimeError(f"Tar output not found after build: {out_path}")
     print(f"Built tar artifact: {out_path}")
     return out_path
+
+
+def resolve_message(args):
+    if args.message_file:
+        message_path = os.path.abspath(args.message_file)
+        if not os.path.exists(message_path):
+            raise RuntimeError(f"Message file not found: {message_path}")
+        with open(message_path, "r", encoding="utf-8") as f:
+            message = f.read()
+    else:
+        message = args.message
+
+    if message is None:
+        return None
+    if not message.strip():
+        raise RuntimeError("Message is empty")
+    return message
 
 
 def list_page_targets(cdp_base: str):
@@ -428,6 +461,191 @@ async def wait_for_loaded(cdp: CdpClient, filename: str, timeout_sec: float, set
     return False
 
 
+async def get_composer_state(cdp: CdpClient):
+    js = r"""
+    (() => {
+      const visible = (el) => {
+        if (!el) return false;
+        const st = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+      };
+      const composer =
+        document.querySelector('form[data-type="unified-composer"]') ||
+        document.querySelector('form.group\\/composer') ||
+        document;
+      const textbox =
+        composer.querySelector('#prompt-textarea') ||
+        composer.querySelector('[contenteditable="true"][role="textbox"]') ||
+        composer.querySelector('[role="textbox"]') ||
+        composer.querySelector('textarea');
+      const sendButton =
+        composer.querySelector('#composer-submit-button') ||
+        composer.querySelector('[data-testid="send-button"]') ||
+        Array.from(composer.querySelectorAll('button')).find(btn => {
+          const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+          return label.includes('send prompt') || label === 'send';
+        });
+      const disabled = !sendButton || sendButton.disabled || sendButton.getAttribute('aria-disabled') === 'true';
+      return {
+        hasTextbox: !!textbox,
+        textboxVisible: visible(textbox),
+        hasSendButton: !!sendButton,
+        sendVisible: visible(sendButton),
+        sendDisabled: !!disabled,
+        text: textbox ? (textbox.innerText || textbox.value || textbox.textContent || '') : ''
+      };
+    })()
+    """
+    result = await evaluate(cdp, js)
+    return result.get("result", {}).get("value", {})
+
+
+async def wait_for_composer(cdp: CdpClient, timeout_sec: float):
+    started = asyncio.get_event_loop().time()
+    while (asyncio.get_event_loop().time() - started) < timeout_sec:
+        state = await get_composer_state(cdp)
+        if state.get("hasTextbox") and state.get("textboxVisible"):
+            return True
+        await asyncio.sleep(0.3)
+    return False
+
+
+async def set_chat_message(cdp: CdpClient, message: str):
+    js = f"""
+    (() => {{
+      const message = {json.dumps(message)};
+      const visible = (el) => {{
+        if (!el) return false;
+        const st = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+      }};
+      const composer =
+        document.querySelector('form[data-type="unified-composer"]') ||
+        document.querySelector('form.group\\\\/composer') ||
+        document;
+      const textbox =
+        composer.querySelector('#prompt-textarea') ||
+        composer.querySelector('[contenteditable="true"][role="textbox"]') ||
+        composer.querySelector('[role="textbox"]') ||
+        composer.querySelector('textarea');
+      if (!textbox || !visible(textbox)) {{
+        return {{ ok: false, reason: "textbox-not-found" }};
+      }}
+
+      textbox.focus();
+      if (textbox.tagName === 'TEXTAREA' || textbox.tagName === 'INPUT') {{
+        textbox.value = '';
+        textbox.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        textbox.value = message;
+        textbox.dispatchEvent(new InputEvent('input', {{
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: message
+        }}));
+      }} else {{
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(textbox);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.execCommand('delete', false, null);
+        document.execCommand('insertText', false, message);
+        textbox.dispatchEvent(new InputEvent('input', {{
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: message
+        }}));
+      }}
+
+      return {{
+        ok: true,
+        reason: "message-inserted",
+        text: (textbox.innerText || textbox.value || textbox.textContent || '').slice(0, 500)
+      }};
+    }})()
+    """
+    result = await evaluate(cdp, js)
+    return result.get("result", {}).get("value", {})
+
+
+async def wait_for_send_enabled(cdp: CdpClient, timeout_sec: float):
+    started = asyncio.get_event_loop().time()
+    while (asyncio.get_event_loop().time() - started) < timeout_sec:
+        state = await get_composer_state(cdp)
+        if state.get("hasSendButton") and state.get("sendVisible") and not state.get("sendDisabled"):
+            return True
+        await asyncio.sleep(0.25)
+    return False
+
+
+async def click_send_button(cdp: CdpClient):
+    js = r"""
+    (() => {
+      const visible = (el) => {
+        if (!el) return false;
+        const st = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+      };
+      const composer =
+        document.querySelector('form[data-type="unified-composer"]') ||
+        document.querySelector('form.group\\/composer') ||
+        document;
+      const sendButton =
+        composer.querySelector('#composer-submit-button') ||
+        composer.querySelector('[data-testid="send-button"]') ||
+        Array.from(composer.querySelectorAll('button')).find(btn => {
+          const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+          return label.includes('send prompt') || label === 'send';
+        });
+      if (!sendButton || !visible(sendButton)) {
+        return { ok: false, reason: "send-button-not-found" };
+      }
+      if (sendButton.disabled || sendButton.getAttribute('aria-disabled') === 'true') {
+        return { ok: false, reason: "send-button-disabled" };
+      }
+      const r = sendButton.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const target = document.elementFromPoint(cx, cy) || sendButton;
+      const fire = (node, type) => node.dispatchEvent(
+        new MouseEvent(type, { bubbles: true, cancelable: true, clientX: cx, clientY: cy })
+      );
+      fire(target, 'mousedown');
+      fire(target, 'mouseup');
+      fire(target, 'click');
+      try { sendButton.click(); } catch (_e) {}
+      return { ok: true, reason: "clicked-send-button" };
+    })()
+    """
+    result = await evaluate(cdp, js)
+    return result.get("result", {}).get("value", {})
+
+
+async def send_chat_message(cdp: CdpClient, message: str, timeout_sec: float):
+    composer_ready = await wait_for_composer(cdp, timeout_sec)
+    if not composer_ready:
+        raise RuntimeError(f"Timed out waiting for chat composer ({timeout_sec}s)")
+
+    inserted = await set_chat_message(cdp, message)
+    if not inserted.get("ok"):
+        raise RuntimeError(f"Failed to insert chat message: {inserted}")
+
+    enabled = await wait_for_send_enabled(cdp, timeout_sec)
+    if not enabled:
+        state = await get_composer_state(cdp)
+        raise RuntimeError(f"Timed out waiting for send button to enable: {state}")
+
+    sent = await click_send_button(cdp)
+    if not sent.get("ok"):
+        raise RuntimeError(f"Failed to send chat message: {sent}")
+    return sent
+
+
 async def wait_for_gone(cdp: CdpClient, filename: str, timeout_sec: float):
     started = asyncio.get_event_loop().time()
     while (asyncio.get_event_loop().time() - started) < timeout_sec:
@@ -607,6 +825,7 @@ def choose_input(inputs, scope: str):
 async def run():
     args = parse_args()
     file_path = resolve_upload_file(args)
+    message = resolve_message(args)
     if not os.path.isabs(file_path):
         raise RuntimeError("--file must be an absolute path")
 
@@ -644,8 +863,7 @@ async def run():
         if already_present and not args.force_upload:
             print(f"File already present in Sources, skipping upload: {filename}")
             print(f"Existing file state: {pre_state.get('reason')} | {pre_state.get('rowText', '')}")
-            return
-        if already_present and args.force_upload:
+        elif already_present and args.force_upload:
             removed = await ensure_removed(cdp, filename, max(5.0, args.confirm_timeout_sec))
             if not removed:
                 raise RuntimeError(f"--force-upload set, but failed to remove existing file: {filename}")
@@ -656,63 +874,69 @@ async def run():
                     await click_by_text(cdp, "Add sources")
                 await asyncio.sleep(0.6)
 
-        inputs = await list_file_inputs(cdp)
-        if args.list_inputs:
+        if not already_present or args.force_upload:
+            inputs = await list_file_inputs(cdp)
+            if args.list_inputs:
+                print(json.dumps(inputs, indent=2))
+                return
+
+            chosen = choose_input(inputs, args.scope)
+            if not chosen:
+                raise RuntimeError(
+                    "No matching source upload input found. Open '+ Add sources' and retry."
+                )
+
+            eval_result = await cdp.send(
+                "Runtime.evaluate",
+                {
+                    "expression": (
+                        f"document.querySelectorAll({json.dumps(args.selector)})"
+                        f"[{int(chosen.get('index', 0))}]"
+                    ),
+                    "objectGroup": "file-input",
+                    "returnByValue": False,
+                    "awaitPromise": False,
+                    "silent": True,
+                },
+            )
+            object_id = eval_result.get("result", {}).get("objectId")
+            if not object_id:
+                raise RuntimeError(
+                    f"Could not resolve chosen input index {chosen.get('index')} for selector {args.selector}"
+                )
+
+            described = await cdp.send("DOM.describeNode", {"objectId": object_id})
+            backend_node_id = described.get("node", {}).get("backendNodeId")
+            if not backend_node_id:
+                raise RuntimeError("Failed to resolve backendNodeId for file input")
+
+            await cdp.send(
+                "DOM.setFileInputFiles", {"files": [file_path], "backendNodeId": backend_node_id}
+            )
+            await cdp.send(
+                "Runtime.callFunctionOn",
+                {
+                    "objectId": object_id,
+                    "functionDeclaration": (
+                        "function(){"
+                        "this.dispatchEvent(new Event('input',{bubbles:true}));"
+                        "this.dispatchEvent(new Event('change',{bubbles:true}));"
+                        "}"
+                    ),
+                    "silent": True,
+                },
+            )
+            await cdp.send("Runtime.releaseObject", {"objectId": object_id})
+            print(
+                "Uploaded file into input index "
+                f"{chosen.get('index')} (id='{chosen.get('id', '')}'): {file_path}"
+            )
+        elif args.list_inputs:
+            inputs = await list_file_inputs(cdp)
             print(json.dumps(inputs, indent=2))
             return
 
-        chosen = choose_input(inputs, args.scope)
-        if not chosen:
-            raise RuntimeError(
-                "No matching source upload input found. Open '+ Add sources' and retry."
-            )
-
-        eval_result = await cdp.send(
-            "Runtime.evaluate",
-            {
-                "expression": (
-                    f"document.querySelectorAll({json.dumps(args.selector)})"
-                    f"[{int(chosen.get('index', 0))}]"
-                ),
-                "objectGroup": "file-input",
-                "returnByValue": False,
-                "awaitPromise": False,
-                "silent": True,
-            },
-        )
-        object_id = eval_result.get("result", {}).get("objectId")
-        if not object_id:
-            raise RuntimeError(
-                f"Could not resolve chosen input index {chosen.get('index')} for selector {args.selector}"
-            )
-
-        described = await cdp.send("DOM.describeNode", {"objectId": object_id})
-        backend_node_id = described.get("node", {}).get("backendNodeId")
-        if not backend_node_id:
-            raise RuntimeError("Failed to resolve backendNodeId for file input")
-
-        await cdp.send(
-            "DOM.setFileInputFiles", {"files": [file_path], "backendNodeId": backend_node_id}
-        )
-        await cdp.send(
-            "Runtime.callFunctionOn",
-            {
-                "objectId": object_id,
-                "functionDeclaration": (
-                    "function(){"
-                    "this.dispatchEvent(new Event('input',{bubbles:true}));"
-                    "this.dispatchEvent(new Event('change',{bubbles:true}));"
-                    "}"
-                ),
-                "silent": True,
-            },
-        )
-        await cdp.send("Runtime.releaseObject", {"objectId": object_id})
-        print(
-            "Uploaded file into input index "
-            f"{chosen.get('index')} (id='{chosen.get('id', '')}'): {file_path}"
-        )
-        if args.confirm_loaded:
+        if args.confirm_loaded or message is not None:
             loaded = await wait_for_loaded(
                 cdp, filename, args.confirm_timeout_sec, args.confirm_settle_sec
             )
@@ -725,6 +949,9 @@ async def run():
                     "Upload sent, but source did not reach ready state within "
                     f"{args.confirm_timeout_sec}s: {filename} | state={st}"
                 )
+        if message is not None:
+            sent = await send_chat_message(cdp, message, args.message_timeout_sec)
+            print(f"Sent chat message after source was ready: {sent.get('reason')}")
 
 
 if __name__ == "__main__":

@@ -30,7 +30,19 @@ python3 upload_via_cdp.py \
   --scope sources \
   --force-upload \
   --confirm-settle-sec 3 \
-  --confirm-loaded
+  --confirm-loaded \
+  --message "Review the uploaded source archive."
+```
+
+Upload, wait until the source row is fully ready, then send a message:
+
+```bash
+python3 upload_via_cdp.py \
+  --file /absolute/path/to/file \
+  --open-sources-flow \
+  --scope sources \
+  --confirm-loaded \
+  --message "Review the uploaded file."
 ```
 
 ## Useful options
@@ -54,3 +66,4 @@ python3 upload_via_cdp.py \
 - `--confirm-loaded` now waits for a ready state (not just filename visibility), using row-level loading indicators/spinners.
 - `--confirm-settle-sec` requires ready state to stay stable before confirmation (helps avoid transient false-ready states).
 - Use `--force-upload` to replace an existing same-named source: remove existing entry, verify it's gone, then upload and verify ready.
+- Use `--message` or `--message-file` to fill the ChatGPT project composer and send after the source is fully ready. Message sending always waits for the ready check, even if `--confirm-loaded` is omitted.
