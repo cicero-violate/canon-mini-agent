@@ -15,3 +15,4 @@ python3 /workspace/ai_sandbox/canon-mini-agent/prototype/cdp-file-upload/upload_
   --confirm-loaded \
   --confirm-timeout-sec 120 \
   --confirm-settle-sec 3
+  --message "Extract ai.tar.gz , review the source code, and update the score.md be critical."
