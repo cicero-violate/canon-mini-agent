@@ -2,8 +2,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-pub const LEGACY_OBJECTIVES_JSON_FILE: &str = "PLANS/OBJECTIVES.json";
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ObjectivesFile {
     #[serde(default)]
@@ -60,24 +58,12 @@ pub fn runtime_master_plan_path(workspace: &Path) -> PathBuf {
     workspace_join_path(workspace, crate::constants::MASTER_PLAN_FILE)
 }
 
-pub fn legacy_objectives_path(workspace: &Path) -> PathBuf {
-    workspace_join_path(workspace, LEGACY_OBJECTIVES_JSON_FILE)
-}
-
 pub fn workspace_join_path(workspace: &Path, file: &str) -> PathBuf {
     workspace.join(file)
 }
 
 pub fn resolve_objectives_path(workspace: &Path) -> PathBuf {
-    let runtime = runtime_objectives_path(workspace);
-    if runtime.exists() {
-        return runtime;
-    }
-    let legacy = legacy_objectives_path(workspace);
-    if legacy.exists() {
-        return legacy;
-    }
-    runtime
+    runtime_objectives_path(workspace)
 }
 
 /// Intent: repair_or_initialize
@@ -97,15 +83,6 @@ pub fn ensure_runtime_objectives_file(workspace: &Path) -> std::io::Result<PathB
 
     if let Some(parent) = runtime.parent() {
         std::fs::create_dir_all(parent)?;
-    }
-
-    let legacy = legacy_objectives_path(workspace);
-    if legacy.exists() {
-        let raw = std::fs::read_to_string(&legacy).unwrap_or_default();
-        if !raw.trim().is_empty() {
-            std::fs::write(&runtime, raw)?;
-            return Ok(runtime);
-        }
     }
 
     let empty = serde_json::to_string_pretty(&ObjectivesFile {
@@ -149,9 +126,9 @@ pub fn load_master_plan_snapshot(workspace: &Path) -> Value {
 /// Resource: objectives_compact
 /// Inputs: &std::path::Path
 /// Outputs: std::string::String
-/// Effects: reads canonical objectives projection or fallback objectives file
+/// Effects: reads canonical objectives projection or runtime objectives file
 /// Forbidden: mutation
-/// Invariants: prefers canonical objectives JSON when available; otherwise resolves workspace objectives path and returns compact objectives text
+/// Invariants: prefers canonical objectives JSON when available; otherwise reads runtime objectives text
 /// Failure: none
 /// Provenance: rustc:facts + rustc:docstring
 pub fn read_objectives_compact_for_workspace(workspace: &Path) -> String {
@@ -242,7 +219,7 @@ pub fn read_objectives_compact_from_raw(raw: &str) -> String {
 /// Provenance: rustc:facts + rustc:docstring
 pub fn load_bootstrap_objectives_seed(workspace: &Path) -> (PathBuf, String) {
     let path = ensure_runtime_objectives_file(workspace)
-        .unwrap_or_else(|_| resolve_objectives_path(workspace));
+        .unwrap_or_else(|_| runtime_objectives_path(workspace));
     let raw = std::fs::read_to_string(&path).unwrap_or_default();
     let normalized = if raw.trim().is_empty() {
         serde_json::to_string_pretty(&ObjectivesFile {
@@ -457,29 +434,12 @@ mod tests {
     }
 
     #[test]
-    fn resolve_objectives_path_prefers_legacy_when_runtime_missing() {
-        let workspace = fresh_workspace("legacy-fallback");
-        let legacy = legacy_objectives_path(&workspace);
-        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-        std::fs::write(&legacy, r#"{"version":1,"objectives":[{"id":"obj_legacy","title":"Legacy","status":"active"}],"goal":[],"instrumentation":[],"definition_of_done":[],"non_goals":[]}"#).unwrap();
-
-        assert_eq!(resolve_objectives_path(&workspace), legacy);
-        assert!(read_objectives_compact_for_workspace(&workspace).contains("obj_legacy"));
-    }
-
-    #[test]
-    fn ensure_runtime_objectives_file_bootstraps_from_legacy_json() {
-        let workspace = fresh_workspace("bootstrap-runtime");
-        let legacy = legacy_objectives_path(&workspace);
-        let runtime = runtime_objectives_path(&workspace);
-        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-        std::fs::write(&legacy, r#"{"version":1,"objectives":[{"id":"obj_runtime","title":"Restore runtime objective authority","status":"active"}],"goal":[],"instrumentation":[],"definition_of_done":[],"non_goals":[]}"#).unwrap();
-
-        let ensured = ensure_runtime_objectives_file(&workspace).unwrap();
-        let persisted = std::fs::read_to_string(&runtime).unwrap();
-
-        assert_eq!(ensured, runtime);
-        assert!(persisted.contains("obj_runtime"));
+    fn resolve_objectives_path_uses_runtime_authority() {
+        let workspace = fresh_workspace("runtime-authority");
+        assert_eq!(
+            resolve_objectives_path(&workspace),
+            runtime_objectives_path(&workspace)
+        );
     }
 
     #[test]
